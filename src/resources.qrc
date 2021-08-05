@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/plugins/azure_maps">
+    <file>icon-circle.png</file>
+  </qresource>
+</RCC>
