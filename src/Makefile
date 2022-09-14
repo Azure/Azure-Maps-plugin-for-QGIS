@@ -65,7 +65,8 @@ PEP8EXCLUDE=pydev,resources.py,conf.py,third_party,ui
 #	* Windows:
 #	  AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins'
 
-QGISDIR=%APPDATA%/QGIS/QGIS3/profiles/default/python/plugins
+HOME=C:\Users\EnterYourUserHere
+QGISDIR=AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins
 
 #################################################
 # Normally you would not need to edit below here
@@ -86,7 +87,10 @@ default:
 	@echo You can install pb_tool using: pip install pb_tool
 	@echo See https://g-sherman.github.io/plugin_build_tool/ for info. 
 
-compile: $(COMPILED_RESOURCE_FILES)
+win-compile:
+	.\compile.bat
+
+unix-compile: $(COMPILED_RESOURCE_FILES)
 
 %.py : %.qrc $(RESOURCES_SRC)
 	pyrcc5 -o $*.py  $<
@@ -94,7 +98,7 @@ compile: $(COMPILED_RESOURCE_FILES)
 %.qm : %.ts
 	$(LRELEASE) $<
 
-test: compile transcompile
+test: unix-compile transcompile
 	@echo
 	@echo "----------------------"
 	@echo "Regression Test Suite"
@@ -112,7 +116,25 @@ test: compile transcompile
 	@echo "e.g. source run-env-linux.sh <path to qgis install>; make test"
 	@echo "----------------------"
 
-deploy: compile doc transcompile
+win-deploy: win-compile
+	@echo ------------------------------------------
+	@echo The win-deploy target only works on Windows operating system where the Python plugin directory is located at:
+	@echo $(HOME)\$(QGISDIR)
+	@echo ------------------------------------------
+	@echo Deploying plugin to your QGIS Plugin directory.
+	@echo ------------------------------------------
+	xcopy __init__.py $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	xcopy azure_maps_plugin.py $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	xcopy azure_maps_plugin_dialog.py $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	xcopy azure_maps_plugin_dialog_base.ui $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	xcopy azure_maps_plugin_floor_picker.ui $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	xcopy resources.py $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	xcopy metadata.txt $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	xcopy icon-circle.png $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	xcopy help/build/html $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	# $(foreach PY_FILE,$(PY_FILES),xcopy $(PY_FILE) $(HOME)\$(QGISDIR)\$(PLUGINNAME);)
+
+unix-deploy: unix-compile doc transcompile
 	@echo
 	@echo "------------------------------------------"
 	@echo "Deploying plugin to your .qgis2 directory."
@@ -120,13 +142,13 @@ deploy: compile doc transcompile
 	# The deploy  target only works on unix like operating system where
 	# the Python plugin directory is located at:
 	# $HOME/$(QGISDIR)/python/plugins
-	mkdir -p $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vf $(PY_FILES) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vf $(UI_FILES) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vf $(COMPILED_RESOURCE_FILES) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vf $(EXTRAS) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vfr i18n $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
-	cp -vfr $(HELP) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/help
+	mkdir -p $(HOME)/$(QGISDIR)/$(PLUGINNAME)
+	cp -vf $(PY_FILES) $(HOME)/$(QGISDIR)/$(PLUGINNAME)
+	cp -vf $(UI_FILES) $(HOME)/$(QGISDIR)/$(PLUGINNAME)
+	cp -vf $(COMPILED_RESOURCE_FILES) $(HOME)/$(QGISDIR)/$(PLUGINNAME)
+	cp -vf $(EXTRAS) $(HOME)/$(QGISDIR)/$(PLUGINNAME)
+	cp -vfr i18n $(HOME)/$(QGISDIR)/$(PLUGINNAME)
+	cp -vfr $(HELP) $(HOME)/$(QGISDIR)/$(PLUGINNAME)/help
 	# Copy extra directories if any
 	(foreach EXTRA_DIR,(EXTRA_DIRS), cp -R (EXTRA_DIR) (HOME)/(QGISDIR)/python/plugins/(PLUGINNAME)/;)
 
@@ -138,8 +160,8 @@ dclean:
 	@echo "-----------------------------------"
 	@echo "Removing any compiled python files."
 	@echo "-----------------------------------"
-	find $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME) -iname "*.pyc" -delete
-	find $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME) -iname ".git" -prune -exec rm -Rf {} \;
+	find $(HOME)/$(QGISDIR)/$(PLUGINNAME) -iname "*.pyc" -delete
+	find $(HOME)/$(QGISDIR)/$(PLUGINNAME) -iname ".git" -prune -exec rm -Rf {} \;
 
 
 derase:
@@ -147,9 +169,9 @@ derase:
 	@echo "-------------------------"
 	@echo "Removing deployed plugin."
 	@echo "-------------------------"
-	rm -Rf $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
+	rm -Rf $(HOME)/$(QGISDIR)/$(PLUGINNAME)
 
-zip: deploy dclean
+zip: unix-deploy dclean
 	@echo
 	@echo "---------------------------"
 	@echo "Creating plugin zip bundle."
@@ -159,7 +181,7 @@ zip: deploy dclean
 	rm -f $(PLUGINNAME).zip
 	cd $(HOME)/$(QGISDIR)/python/plugins; zip -9r $(CURDIR)/$(PLUGINNAME).zip $(PLUGINNAME)
 
-package: compile
+package: unix-compile
 	# Create a zip package of the plugin named $(PLUGINNAME).zip.
 	# This requires use of git (your plugin development directory must be a
 	# git repository).
