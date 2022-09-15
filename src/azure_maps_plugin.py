@@ -115,7 +115,7 @@ class AzureMapsPlugin:
         """
         win = QWidget()
         l1 = QLabel()
-        l1.setPixmap(QPixmap(":/plugins/azure_maps/icon-circle.png"))
+        l1.setPixmap(QPixmap(":/plugins/azure_maps/media/icon-circle.png"))
 
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate("AzureMapsPlugin", message)
@@ -201,7 +201,7 @@ class AzureMapsPlugin:
             + Const.RELATIVE_CONFIG_PATH
         )
         plugin_settings = QSettings(config_path, QSettings.IniFormat)
-        icon_path = ":/plugins/azure_maps/icon-circle.png"
+        icon_path = ":/plugins/azure_maps/media/icon-circle.png"
         self.add_action(
             icon_path,
             text=self.tr(u"Azure Maps"),
@@ -1685,7 +1685,7 @@ class AzureMapsPlugin:
 
     def _open_welcome_message(self):
         msg = QMessageBox()
-        msg.setIconPixmap(QPixmap(":/plugins/azure_maps/icon-circle.png"))
+        msg.setIconPixmap(QPixmap(":/plugins/azure_maps/media/icon-circle.png"))
         msg.setText("Welcome to the Azure Maps Plugin!")
         msg.setInformativeText(
             '<a href="https://aka.ms/am-qgis-plugin">Azure Maps Plugin Documentation</a>'
