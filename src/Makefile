@@ -125,11 +125,11 @@ win-deploy: win-compile
 	@echo ------------------------------------------
 	@echo Deploying plugin to your QGIS Plugin directory.
 	@echo ------------------------------------------
-	FOR %%f in ($(PY_FILES)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	FOR %%f in ($(UI_FILES)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	FOR %%f in ($(COMPILED_RESOURCE_FILES)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	FOR %%f in ($(EXTRAS)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	FOR %%f in ($(HELP)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\help /y
+	FOR %%f in ($(HELP)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\help /y /i
+	FOR %%f in ($(PY_FILES)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
+	FOR %%f in ($(UI_FILES)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
+	FOR %%f in ($(COMPILED_RESOURCE_FILES)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
+	FOR %%f in ($(EXTRAS)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 
 unix-deploy: unix-compile doc transcompile
 	@echo
@@ -149,6 +149,9 @@ unix-deploy: unix-compile doc transcompile
 	# Copy extra directories if any
 	(foreach EXTRA_DIR,(EXTRA_DIRS), cp -R (EXTRA_DIR) (HOME)/(QGISDIR)/python/plugins/(PLUGINNAME)/;)
 
+# The delete target removes plugin from Windows systems
+win-delete:
+	rd /S /Q $(HOME)\$(QGISDIR)\$(PLUGINNAME)
 
 # The dclean target removes compiled python files from plugin directory
 # also deletes any .git entry
@@ -161,7 +164,7 @@ dclean:
 	find $(HOME)/$(QGISDIR)/$(PLUGINNAME) -iname ".git" -prune -exec rm -Rf {} \;
 
 
-derase:
+unix-delete:
 	@echo
 	@echo "-------------------------"
 	@echo "Removing deployed plugin."
