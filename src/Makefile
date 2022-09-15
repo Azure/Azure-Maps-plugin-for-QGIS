@@ -43,12 +43,14 @@ SOURCES = \
 PLUGINNAME = azure_maps
 
 PY_FILES = \
-	__init__.py \
-	azure_maps_plugin.py azure_maps_plugin_dialog.py
+	__init__.py Const.py \
+	azure_maps_plugin.py azure_maps_plugin_dialog.py \
+	Const.py progress_iterator.py \
+	level_picker.py validation_utility.py
 
 UI_FILES = azure_maps_plugin_dialog_base.ui azure_maps_plugin_floor_picker.ui
 
-EXTRAS = metadata.txt icon.png
+EXTRAS = metadata.txt icon-circle.png
 
 EXTRA_DIRS =
 
@@ -72,7 +74,7 @@ QGISDIR=AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins
 # Normally you would not need to edit below here
 #################################################
 
-HELP = help/build/html
+HELP = help\build\html
 
 PLUGIN_UPLOAD = $(c)/plugin_upload.py
 
@@ -123,16 +125,11 @@ win-deploy: win-compile
 	@echo ------------------------------------------
 	@echo Deploying plugin to your QGIS Plugin directory.
 	@echo ------------------------------------------
-	xcopy __init__.py $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	xcopy azure_maps_plugin.py $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	xcopy azure_maps_plugin_dialog.py $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	xcopy azure_maps_plugin_dialog_base.ui $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	xcopy azure_maps_plugin_floor_picker.ui $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	xcopy resources.py $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	xcopy metadata.txt $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	xcopy icon-circle.png $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	xcopy help/build/html $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
-	# $(foreach PY_FILE,$(PY_FILES),xcopy $(PY_FILE) $(HOME)\$(QGISDIR)\$(PLUGINNAME);)
+	FOR %%f in ($(PY_FILES)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	FOR %%f in ($(UI_FILES)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	FOR %%f in ($(COMPILED_RESOURCE_FILES)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	FOR %%f in ($(EXTRAS)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y
+	FOR %%f in ($(HELP)) DO xcopy %%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\help /y
 
 unix-deploy: unix-compile doc transcompile
 	@echo
