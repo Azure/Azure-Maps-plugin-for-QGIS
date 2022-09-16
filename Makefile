@@ -45,7 +45,6 @@ LOCALES =
 #LRELEASE = lrelease
 #LRELEASE = lrelease-qt4
 
-
 # translation
 SOURCES = \
 	__init__.py \
@@ -93,7 +92,7 @@ win-deploy: win-compile
 	@echo ------------------------------------------
 	FOR %%f in ($(HELP)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\help /y /i
 	FOR %%f in ($(PY_FILES)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
-	FOR %%f in ($(UI_FILES)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
+	FOR %%f in ($(UI_FILES)) DO xcopy .\src\ui\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 	FOR %%f in ($(COMPILED_RESOURCE_FILES)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 	FOR %%f in ($(EXTRAS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 	FOR %%f in ($(MEDIA)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\$(MEDIA) /y /i
@@ -102,10 +101,10 @@ win-deploy: win-compile
 win-delete:
 	rd /S /Q $(HOME)\$(QGISDIR)\$(PLUGINNAME)
 
-
-
-
+########################################################################################################################################################
 # This project was initially created using a unix system, so please be aware that the make targets below are designed for unix and do no support windows.
+########################################################################################################################################################
+
 .PHONY: default
 default:
 	@echo While you can use make to build and deploy your plugin, pb_tool
