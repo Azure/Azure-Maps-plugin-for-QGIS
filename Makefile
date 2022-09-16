@@ -97,9 +97,17 @@ win-deploy: win-compile
 	FOR %%f in ($(EXTRAS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 	FOR %%f in ($(MEDIA)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\$(MEDIA) /y /i
 
-# The delete target removes plugin from Windows systems
 win-delete:
+	@echo "-------------------------"
+	@echo "Removing deployed plugin."
+	@echo "-------------------------"
 	rd /S /Q $(HOME)\$(QGISDIR)\$(PLUGINNAME)
+
+win-clean:
+	@echo "-----------------------------------"
+	@echo "Removing files not tracked by git."
+	@echo "-----------------------------------"
+	git clean -x -f
 
 ########################################################################################################################################################
 # This project was initially created using a unix system, so please be aware that the make targets below are designed for unix and do no support windows.
@@ -160,7 +168,7 @@ unix-deploy: unix-compile doc transcompile
 
 # The dclean target removes compiled python files from plugin directory
 # also deletes any .git entry
-dclean:
+unix-clean:
 	@echo
 	@echo "-----------------------------------"
 	@echo "Removing any compiled python files."
