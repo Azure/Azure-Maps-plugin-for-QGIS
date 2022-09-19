@@ -28,6 +28,8 @@ from PyQt5.QtWidgets import *
 from qgis.core import *
 
 # Initialize Qt resources from file resources.py
+from QGISPlugin.models.Collection import Collection
+from QGISPlugin.models.Ontology import Ontology
 from .Const import Const
 from .resources import *
 
@@ -64,7 +66,7 @@ class AzureMapsPlugin:
         self.ltv = self.iface.layerTreeView()
         self.msgBar = self.iface.messageBar()
         self.pluginToolbar = self.iface.pluginToolBar()
-        self.model = self.ltv.model()
+        self.model = self.ltv.layerTreeModel()
         self.root = QgsProject.instance().layerTreeRoot()
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
@@ -99,7 +101,6 @@ class AzureMapsPlugin:
         self.areAllFieldsValid = True
         self.base_group = None
         self._progress_base = None
-        self.FACILITY_1 = "facility-1.0"
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -418,7 +419,7 @@ class AzureMapsPlugin:
             )
             return
 
-        self.ontology = json.loads(r.text)["ontology"]
+        self.ontology = Ontology(json.loads(r.text)["ontology"])
 
         # If successful, get all the layers.
         # Create a new dataset group layer if it doesn't exist, otherwise override the existing group layer
@@ -451,19 +452,8 @@ class AzureMapsPlugin:
 
         id_map = self.id_map[dataset_id]
         collection_meta = self.collection_meta_map[dataset_id]
-        collection_order = [
-            "category",
-            "directoryInfo",
-            "pointElement",
-            "verticalPenetration",
-            "zone",
-            "lineElement",
-            "areaElement",
-            "opening",
-            "unit",
-            "level",
-            "facility",
-        ]
+        collection_order = Collection.get_order(self.ontology)
+
         other_collections = [
             c["name"] for c in collections if c["name"] not in collection_order
         ]
@@ -545,6 +535,10 @@ class AzureMapsPlugin:
                 v_layer.commitChanges()
                 self.enum_ids[attr_name] = v_layer.id()
 
+        level_layer = category_layer = directoryInfo_layer = unit_layer = areaElement_layer = structure_layer = \
+            opening_layer = lineElement_layer = pointElement_layer = facility_layer = verticalPenetration_layer = \
+            zone_layer = None
+
         for name in collection_order + other_collections:
             # Find collection in API definition.
             collection = next(c for c in collections if c["name"] == name)
@@ -615,6 +609,8 @@ class AzureMapsPlugin:
                 unit_layer = layer
             elif name == "areaElement":
                 areaElement_layer = layer
+            elif name == "structure":
+                structure_layer = layer
             elif name == "opening":
                 opening_layer = layer
             elif name == "lineElement":
@@ -695,11 +691,19 @@ class AzureMapsPlugin:
         fac_index = self.add_widget(
             level_layer, "facility", "ValueRelation", facility_config
         )
+        cat_index = self.add_widget(
+            level_layer, "category", "ValueRelation", category_config
+        )
 
         ordinals = []
         for feature in level_layer.getFeatures():
             ordinal = str(feature["ordinal"])
             level_layer.changeAttributeValue(feature.id(), floor_index, ordinal)
+            level_layer.changeAttributeValue(
+                feature.id(),
+                cat_index,
+                feature.attribute(self.relation_map["category"]),
+            )
             level_layer.changeAttributeValue(
                 feature.id(),
                 fac_index,
@@ -712,7 +716,7 @@ class AzureMapsPlugin:
             self.level_picker.append(ordinal)
 
         # Unit layer
-        if self.ontology == self.FACILITY_1:
+        if self.ontology == Ontology.FACILITY_1:
             self._set_widget_layer_id(unit_layer, "navigableBy")
             self._set_widget_layer_id(unit_layer, "routeThroughBehavior")
 
@@ -747,6 +751,31 @@ class AzureMapsPlugin:
             self.space_to_floors[feature["id"]] = floor
             space_to_ordinals[feature["id"]] = ordinal
         self.add_layer_events(unit_layer, id_map, collection_meta)
+
+        # Structure layer
+        if structure_layer is not None:
+            floor_index = self.add_helper_attributes(structure_layer)
+            cat_index = self.add_widget(
+                structure_layer, "category", "ValueRelation", category_config
+            )
+            lvl_index = self.add_widget(
+                structure_layer, "level", "ValueRelation", level_config
+            )
+            for feature in structure_layer.getFeatures():
+                levelId = feature["levelId"]
+                floor = self.level_to_ordinal[levelId]
+                structure_layer.changeAttributeValue(feature.id(), floor_index, floor)
+                structure_layer.changeAttributeValue(
+                    feature.id(),
+                    cat_index,
+                    feature.attribute(self.relation_map["category"]),
+                )
+                structure_layer.changeAttributeValue(
+                    feature.id(),
+                    lvl_index,
+                    feature.attribute(self.relation_map["level"]),
+                )
+            self.add_layer_events(structure_layer, id_map, collection_meta)
 
         # Area element layer
         cat_index = self.add_widget(
@@ -812,7 +841,7 @@ class AzureMapsPlugin:
         )
 
         # Vertical Penetration layer
-        if self.ontology == self.FACILITY_1:
+        if self.ontology == Ontology.FACILITY_1:
             self._set_widget_layer_id(unit_layer, "direction")
             self._set_widget_layer_id(unit_layer, "navigableBy")
 
@@ -845,7 +874,7 @@ class AzureMapsPlugin:
 
         # Opening layer
         if opening_layer is not None:
-            if self.ontology == self.FACILITY_1:
+            if self.ontology == Ontology.FACILITY_1:
                 self._set_widget_layer_id(opening_layer, "navigableBy")
                 self._set_widget_layer_id(opening_layer, "accessLeftToRight")
                 self._set_widget_layer_id(opening_layer, "accessRightToLeft")
@@ -903,13 +932,12 @@ class AzureMapsPlugin:
 
         # Category Layer
         if category_layer is not None:
-            if self.ontology == self.FACILITY_1:
+            if self.ontology == Ontology.FACILITY_1:
                 self._set_widget_layer_id(category_layer, "navigableBy")
             self.add_layer_events(category_layer, id_map, collection_meta)
 
         # Directory Info layer
         if directoryInfo_layer is not None:
-            self.add_widget(directoryInfo_layer, "adminDivisions", "List")
             self.add_layer_events(directoryInfo_layer, id_map, collection_meta)
 
         # Zone layer
@@ -1109,7 +1137,7 @@ class AzureMapsPlugin:
 
                 # layer = QgsVectorLayer(wkt + "?crs=" + crs + "&index=yes", name, "memory")
                 maplayer = QgsLayerDefinition.loadLayerDefinitionLayers(
-                    self.plugin_dir + "/defs/" + name + ".qlr"
+                    self.plugin_dir + "/defs/" + self.ontology.value + "/" + name + ".qlr"
                 )
                 if len(maplayer) != 0:
                     layer = maplayer[0]

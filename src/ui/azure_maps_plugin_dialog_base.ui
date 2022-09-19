@@ -495,7 +495,7 @@ S</string>
         </font>
        </property>
        <property name="text">
-        <string>Version 1.4.5 Experimental</string>
+        <string>Version 1.4.7 Experimental</string>
        </property>
        <property name="alignment">
         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>

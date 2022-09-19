@@ -2,7 +2,7 @@
 name=Azure Maps
 qgisMinimumVersion=3.8
 description=Provides access to Azure Maps services and data
-version=1.4.5
+version=1.4.7
 author=Microsoft Corporation
 email=japark@microsoft.com, Xubin.Zhuge@microsoft.com
 
@@ -28,3 +28,4 @@ experimental=True
 
 # deprecated flag (applies to the whole plugin, not just a single version)
 deprecated=False
+
