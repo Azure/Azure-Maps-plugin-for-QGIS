@@ -84,18 +84,7 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
         # self.adButton.setChecked(True)
 
         # Environment
-        env = self.plugin_settings.value("environment", "prod")
-        self.envButtons = {
-            "prod": self.prodButton,
-            "stg": self.stgButton,
-            "test": self.testButton,
-            "ci": self.ciButton,
-            "dev": self.localhostButton,
-        }
-        self.envButtons[env].setChecked(True)
-
-        if bool(self.plugin_settings.value("useFrontDoor", True)):
-            self.frontDoorButton.setChecked(True)
+        self.plugin_settings.setValue("environment", "prod")
         # else:
         # self.mdpButton.setChecked(True)
 
