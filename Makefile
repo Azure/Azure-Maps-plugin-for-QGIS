@@ -64,7 +64,7 @@ EXTRAS = metadata.txt
 
 MEDIA = media
 
-EXTRA_DIRS =
+EXTRA_DIRS = geojson
 
 COMPILED_RESOURCE_FILES = resources.py
 
@@ -95,6 +95,7 @@ win-deploy: win-compile
 	FOR %%f in ($(UI_FILES)) DO xcopy .\src\ui\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 	FOR %%f in ($(COMPILED_RESOURCE_FILES)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 	FOR %%f in ($(EXTRAS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
+	FOR %%f in ($(EXTRA_DIRS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\$(EXTRA_DIRS) /y /i
 	FOR %%f in ($(MEDIA)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\$(MEDIA) /y /i
 
 win-delete:
