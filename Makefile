@@ -83,7 +83,7 @@ RESOURCE_SRC=$(shell grep '^ *<file' resources.qrc | sed 's@</file>@@g;s/.*>//g'
 win-compile:
 	.\src\build\compile.bat
 
-win-deploy: win-compile
+win-deploy: win-compile win-doc
 	@echo ------------------------------------------
 	@echo The win-deploy target only works on Windows operating system where the Python plugin directory is located at:
 	@echo $(HOME)\$(QGISDIR)
@@ -109,6 +109,13 @@ win-clean:
 	@echo "Removing files not tracked by git."
 	@echo "-----------------------------------"
 	git clean -x -f
+
+win-doc:
+	@echo
+	@echo "------------------------------------"
+	@echo "Building documentation using sphinx."
+	@echo "------------------------------------"
+	cd .\src\help & make html
 
 ########################################################################################################################################################
 # This project was initially created using a unix system, so please be aware that the make targets below are designed for unix and do no support windows.
