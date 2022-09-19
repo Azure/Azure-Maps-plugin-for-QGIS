@@ -50,13 +50,14 @@ SOURCES = \
 	__init__.py \
 	azure_maps_plugin.py azure_maps_plugin_dialog.py
 
-PLUGINNAME = azure_maps
+PLUGINNAME = QGISPlugin
 
 PY_FILES = \
 	__init__.py Const.py \
 	azure_maps_plugin.py azure_maps_plugin_dialog.py \
+	azure_maps_plugin_floor_picker.py azure_maps_plugin_welcome_message.py \
 	Const.py progress_iterator.py \
-	level_picker.py validation_utility.py
+	level_picker.py validation_utility.py \
 
 UI_FILES = azure_maps_plugin_dialog_base.ui azure_maps_plugin_floor_picker.ui
 
@@ -64,7 +65,7 @@ EXTRAS = metadata.txt
 
 MEDIA = media
 
-EXTRA_DIRS = geojson
+EXTRA_DIRS = geojson models defs
 
 COMPILED_RESOURCE_FILES = resources.py
 
@@ -94,9 +95,9 @@ win-deploy: win-compile win-doc
 	FOR %%f in ($(PY_FILES)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 	FOR %%f in ($(UI_FILES)) DO xcopy .\src\ui\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 	FOR %%f in ($(COMPILED_RESOURCE_FILES)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
-	FOR %%f in ($(EXTRAS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
-	FOR %%f in ($(EXTRA_DIRS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\$(EXTRA_DIRS) /y /i
 	FOR %%f in ($(MEDIA)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\$(MEDIA) /y /i
+	FOR %%f in ($(EXTRAS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
+	FOR %%f in ($(EXTRA_DIRS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\%%f /y /i /E
 
 win-delete:
 	@echo "-------------------------"
