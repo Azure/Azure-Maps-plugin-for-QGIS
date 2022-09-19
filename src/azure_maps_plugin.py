@@ -350,6 +350,8 @@ class AzureMapsPlugin:
             host = "https://us.atlas.microsoft.com"
         elif str(self.dlg.geographyDropdown.currentText()) == "Europe":
             host = "https://eu.atlas.microsoft.com"
+        elif str(self.dlg.geographyDropdown.currentText()) == "Test":
+            host = "https://us.t-azmaps.azurelbs.com"
         else:
             host = "https://atlas.microsoft.com"
 
@@ -1061,6 +1063,8 @@ class AzureMapsPlugin:
             url = url.replace("//atlas.microsoft.com", "//us.atlas.microsoft.com")
         elif str(self.dlg.geographyDropdown.currentText()) == "Europe":
             url = url.replace("//atlas.microsoft.com", "//eu.atlas.microsoft.com")
+        elif str(self.dlg.geographyDropdown.currentText()) == "Test":
+            url = url.replace("//atlas.microsoft.com", "//us.t-azmaps.azurelbs.com")
 
         if self.dlg.skButton.isChecked():
             url += "&" + urllib.parse.urlencode(
