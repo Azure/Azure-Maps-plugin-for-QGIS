@@ -59,7 +59,7 @@ PY_FILES = \
 	Const.py progress_iterator.py \
 	level_picker.py validation_utility.py \
 
-UI_FILES = azure_maps_plugin_dialog_base.ui azure_maps_plugin_floor_picker.ui
+UI_FILES = azure_maps_plugin_dialog_base.ui azure_maps_plugin_floor_picker.ui azure_maps_plugin_welcome_message.ui
 
 EXTRAS = metadata.txt
 
