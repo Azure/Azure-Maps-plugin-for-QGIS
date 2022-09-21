@@ -326,18 +326,35 @@ class AzureMapsPlugin:
                 {"subscription-key": self.dlg.sharedKey.text()}
             )
 
-        data_upload = host + "/mapData/"
-        query_string = "?" + urllib.parse.urlencode({"api-version": "2.0", "dataFormat": "zip", "description": "Created with QGIS"}) + subscription_key
+        data_upload_api_version = "2.0"
+        dataset_api_version = "2022-09-01-preview"
 
+        # Start progress dialog
+        progress = ProgressIterator(
+            msg="Uploading user data first. Please wait.", window_title="Creating New Dataset"
+        )
+        # Override progress dialog config
+        self._progress_base = progress._get_progress_dialog()
+        self._progress_base.setFixedSize(
+            self._progress_base.width() + 175, self._progress_base.height()
+        )
+        self._progress_base.setCancelButton(None)  # Hide cancel button
+        self._progress_base.setWindowFlags(
+            Qt.WindowSystemMenuHint | Qt.WindowStaysOnTopHint
+        )  # Disable close button, always on top
+        self._progress_base.show()  # Immediately show the progress bar
+        QApplication.processEvents()
+        
+        # Upload zip to Data Upload service
+        data_upload_endpoint = host + "/mapData/"
+        query_string = "?" + urllib.parse.urlencode({"api-version": data_upload_api_version, "dataFormat": "zip", "description": "Created with QGIS"}) + subscription_key
 
-
-        data_upload_url = data_upload + query_string
+        data_upload_url = data_upload_endpoint + query_string
         headers = {"Content-Type": "application/json"}
         # with ZipFile('C:\\\\Users\\username\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\QGISPlugin\\sampleContoso.zip', 'r') as zip:
         #     data = zip.read()
         data = open("C:\\\\Users\\username\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\QGISPlugin\\sampleContoso.zip", "rb")
         
-        # Upload zip to Data Upload service
         data_upload_response = self.post_url(data_upload_url, headers=headers, data=data)
 
         if data_upload_response.status_code != 202:
@@ -346,12 +363,14 @@ class AzureMapsPlugin:
             self.dlg.createDatasetButton.setEnabled(True)
             return
 
-        # Check Data Upload Status    
+        # Check Data Upload Status
+        time.sleep(5)
+        progress.next("Checking user data upload status.")
         data_upload_status_url = data_upload_response.headers["Operation-Location"] + subscription_key
         data_upload_status_response = self.get_url(data_upload_status_url)
-        status = "Running"
+        data_upload_status = "Running"
 
-        while status == "Running":
+        while data_upload_status == "Running":
             if data_upload_status_response.status_code != 200:
                 errorMsg = "Unable to check data upload status. Response status code " + str(data_upload_status_response.status_code) + ". " + data_upload_status_response.text
                 self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
@@ -359,21 +378,66 @@ class AzureMapsPlugin:
                 return
 
             data_upload_status_response_json = json.loads(data_upload_status_response.content)
-            status = data_upload_status_response_json["status"]
+            data_upload_status = data_upload_status_response_json["status"]
             data_upload_status_response = self.get_url(data_upload_status_url)
             time.sleep(5)
 
-        if status == "Failed" or status != "Succeeded":
+        if data_upload_status != "Succeeded":
             errorMsg = "Unable to check data upload status. Response status code " + str(data_upload_status_response.status_code) + ". " + data_upload_status_response.text
             self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
             self.dlg.createDatasetButton.setEnabled(True)
             return
 
-        udid_resource_location = data_upload_status_response.headers["Resource-Location"]
-        # udid = udid_resource_location.lstrip("https://us.t-azmaps.azurelbs.com/mapData/metadata/").rstrip("?api-version=2.0")
+        udid = data_upload_status_response.headers["Resource-Location"]
+        udid = udid.removeprefix(host+"/mapData/metadata/")
+        udid = udid.removesuffix("?api-version="+data_upload_api_version)
+
+        # Create Dataset
+        progress.next("User data " + udid + " successfully uploaded. Now creating dataset.")
+        dataset_endpoint = host + "/datasets/"
+        query_string = "?" + urllib.parse.urlencode({"api-version": dataset_api_version, "description": "Created with QGIS", "udid": udid, "outputOntology": "facility-2.0"}) + subscription_key
+        dataset_url = dataset_endpoint + query_string
         
-        # errorMsg = "UDID: " + str(udid)
-        # self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
+        create_dataset_response = self.post_url(dataset_url)
+
+        if create_dataset_response.status_code != 202:
+            errorMsg =  "Unable to upload data. Response status code " + str(create_dataset_response.status_code) + ". " + create_dataset_response.text
+            self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
+            self.dlg.createDatasetButton.setEnabled(True)
+            return
+
+        # Check Create Dataset Status
+        time.sleep(5)
+        progress.next("Checking dataset creation status.")
+        create_dataset_status_url = create_dataset_response.headers["Operation-Location"] + subscription_key
+        create_dataset_status_response = self.get_url(create_dataset_status_url)
+        create_dataset_status = "Running"
+
+        while create_dataset_status == "Running":
+            if create_dataset_status_response.status_code != 200:
+                errorMsg = "Unable to check create dataset status. Response status code " + str(create_dataset_status_response.status_code) + ". " + create_dataset_status_response.text
+                self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
+                self.dlg.createDatasetButton.setEnabled(True)
+                return
+
+            create_dataset_status_response_json = json.loads(create_dataset_status_response.content)
+            create_dataset_status = create_dataset_status_response_json["status"]
+            create_dataset_status_response = self.get_url(create_dataset_status_url)
+            time.sleep(5)
+
+        if create_dataset_status != "Succeeded":
+            errorMsg = "Unable to check create dataset status. Response status code " + str(create_dataset_status_response.status_code) + ". " + create_dataset_status_response.text
+            self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
+            self.dlg.createDatasetButton.setEnabled(True)
+            return
+
+        datasetId = create_dataset_status_response.headers["Resource-Location"]
+        datasetId = datasetId.removeprefix(host+"/datasets/")
+        datasetId = datasetId.removesuffix("?api-version="+dataset_api_version)
+
+        progress.next("Dataset " + datasetId + " created successfully.")
+        time.sleep(10)
+        self._progress_base.close()
 
         self.dlg.createDatasetButton.setEnabled(True)
         return

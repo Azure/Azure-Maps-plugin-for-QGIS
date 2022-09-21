@@ -61,7 +61,7 @@ PY_FILES = \
 
 UI_FILES = azure_maps_plugin_dialog_base.ui azure_maps_plugin_floor_picker.ui azure_maps_plugin_welcome_message.ui
 
-EXTRAS = metadata.txt
+EXTRAS = metadata.txt plugin-config.ini
 
 MEDIA = media
 
