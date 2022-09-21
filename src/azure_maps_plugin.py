@@ -42,12 +42,14 @@ from .validation_utility import ValidationUtility
 
 from shapely.geometry import mapping, shape
 
+from zipfile import ZipFile
+
 import os.path
 import requests
-import time
 import urllib.parse
 import json
-
+import time
+import re
 
 class AzureMapsPlugin:
     """QGIS Plugin Implementation."""
@@ -239,6 +241,7 @@ class AzureMapsPlugin:
             self.first_start = False
             self.dlg.getFeaturesButton.clicked.connect(self.get_features_clicked)
             self.dlg.getFeaturesButton_2.clicked.connect(self.get_features_clicked)
+            self.dlg.createDatasetButton.clicked.connect(self.create_dataset_clicked)
             self.dlg.closeButton.clicked.connect(self.close_button_clicked)
             self.dlg.floorPicker.currentIndexChanged.connect(self.floor_picker_changed)
             self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.WindowSystemMenuHint)
@@ -303,6 +306,78 @@ class AzureMapsPlugin:
         self.dlg.creatorStatus_2.setText(status)
         QApplication.processEvents()
 
+    def create_dataset_clicked(self):
+        self.close_button_clicked()
+        self.dlg.createDatasetButton.setEnabled(False)
+
+        # Determine host name
+        if str(self.dlg.geographyDropdown.currentText()) == "United States":
+            host = "https://us.atlas.microsoft.com"
+        elif str(self.dlg.geographyDropdown.currentText()) == "Europe":
+            host = "https://eu.atlas.microsoft.com"
+        elif str(self.dlg.geographyDropdown.currentText()) == "Test":
+            host = "https://us.t-azmaps.azurelbs.com"
+        else:
+            host = "https://atlas.microsoft.com"
+
+        subscription_key = ""
+        if self.dlg.skButton.isChecked():
+            subscription_key = "&" + urllib.parse.urlencode(
+                {"subscription-key": self.dlg.sharedKey.text()}
+            )
+
+        data_upload = host + "/mapData/"
+        query_string = "?" + urllib.parse.urlencode({"api-version": "2.0", "dataFormat": "zip", "description": "Created with QGIS"}) + subscription_key
+
+
+
+        data_upload_url = data_upload + query_string
+        headers = {"Content-Type": "application/json"}
+        # with ZipFile('C:\\\\Users\\username\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\QGISPlugin\\sampleContoso.zip', 'r') as zip:
+        #     data = zip.read()
+        data = open("C:\\\\Users\\username\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\QGISPlugin\\sampleContoso.zip", "rb")
+        
+        # Upload zip to Data Upload service
+        data_upload_response = self.post_url(data_upload_url, headers=headers, data=data)
+
+        if data_upload_response.status_code != 202:
+            errorMsg =  "Unable to upload data. Response status code " + str(data_upload_response.status_code) + ". " + data_upload_response.text
+            self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
+            self.dlg.createDatasetButton.setEnabled(True)
+            return
+
+        # Check Data Upload Status    
+        data_upload_status_url = data_upload_response.headers["Operation-Location"] + subscription_key
+        data_upload_status_response = self.get_url(data_upload_status_url)
+        status = "Running"
+
+        while status == "Running":
+            if data_upload_status_response.status_code != 200:
+                errorMsg = "Unable to check data upload status. Response status code " + str(data_upload_status_response.status_code) + ". " + data_upload_status_response.text
+                self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
+                self.dlg.createDatasetButton.setEnabled(True)
+                return
+
+            data_upload_status_response_json = json.loads(data_upload_status_response.content)
+            status = data_upload_status_response_json["status"]
+            data_upload_status_response = self.get_url(data_upload_status_url)
+            time.sleep(5)
+
+        if status == "Failed" or status != "Succeeded":
+            errorMsg = "Unable to check data upload status. Response status code " + str(data_upload_status_response.status_code) + ". " + data_upload_status_response.text
+            self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
+            self.dlg.createDatasetButton.setEnabled(True)
+            return
+
+        udid_resource_location = data_upload_status_response.headers["Resource-Location"]
+        # udid = udid_resource_location.lstrip("https://us.t-azmaps.azurelbs.com/mapData/metadata/").rstrip("?api-version=2.0")
+        
+        # errorMsg = "UDID: " + str(udid)
+        # self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
+
+        self.dlg.createDatasetButton.setEnabled(True)
+        return
+            
     def get_features_clicked(self):
         self.close_button_clicked()
         self._getFeaturesButton_setEnabled(False)
@@ -1730,18 +1805,17 @@ class AzureMapsPlugin:
         self.dlg.getFeaturesButton.setEnabled(boolean)
         self.dlg.getFeaturesButton_2.setEnabled(boolean)
 
-    def apply_url(self, url, verb, method):
-        # print(verb + " " + url)
-        start = time.time()
-        headers = {}
-
+    def apply_url(self, url, verb, method, headers=None, data=None, json=None):
         try:
-            r = method(url, headers=headers, timeout=30, verify=True)
-            # print("{}: {}".format(r.status_code, time.time() - start))
-
+            if verb == "POST":
+                r = requests.post(url, headers=headers, data=data, json=json, timeout=300, verify=True)
+            else:
+                r = method(url, headers=headers, timeout=30, verify=True)
+            
             if "atlas.azure-api.net" in r.text:
                 print("Service in PROD is still returning internal hostname")
             return r
+
         # timed out with predefined value
         except requests.exceptions.Timeout as errt:
             QgsMessageLog.logMessage(
@@ -1757,14 +1831,14 @@ class AzureMapsPlugin:
         # other exception
         except requests.exceptions.RequestException as err:
             QgsMessageLog.logMessage(
-                "OOps: unknown error occurred while sending the request" + str(err),
+                "Oops: unknown error occurred while sending the request" + str(err),
                 "Messages",
                 Qgis.Critical,
             )
             self._progress_base.close()
         except:
             QgsMessageLog.logMessage(
-                "OOps: unexpected exception occurred while sending the request.",
+                "Oops: unexpected exception occurred while sending the request.",
                 "Messages",
                 Qgis.Critical,
             )
@@ -1779,6 +1853,9 @@ class AzureMapsPlugin:
 
     def delete_url(self, url):
         return self.apply_url(url, "DELETE", requests.delete)
+
+    def post_url(self, url, headers=None, data=None, json=None):
+        return self.apply_url(url, "POST", requests.post, headers=headers, data=data, json=json)
 
     def hideGroup(self, group):
         if isinstance(group, QgsLayerTreeGroup):
