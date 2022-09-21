@@ -331,6 +331,7 @@ class AzureMapsPlugin:
 
         # Start progress dialog
         progress = ProgressIterator(
+            count=4,
             msg="Uploading user data first. Please wait.", window_title="Creating New Dataset"
         )
         # Override progress dialog config
