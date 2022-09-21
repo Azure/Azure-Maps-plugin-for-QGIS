@@ -49,6 +49,7 @@ import requests
 import urllib.parse
 import json
 import time
+import shutil
 
 class AzureMapsPlugin:
     """QGIS Plugin Implementation."""
@@ -351,11 +352,20 @@ class AzureMapsPlugin:
         data_upload_url = data_upload_endpoint + query_string
         headers = {"Content-Type": "application/json"}
 
-        data = open(self.plugin_dir+"/sampleContoso.zip", "rb")
-        
+        geojson_path = self.plugin_dir + "/geojson"
+        temp_path = self.plugin_dir + "/temp"
+        geojson_copy_dest_path = temp_path + "/geojson"
+        geojson_zip_path = temp_path + "/geojson_temp"
+
+        shutil.copytree(geojson_path, geojson_copy_dest_path)
+        shutil.make_archive(geojson_zip_path, "zip", geojson_copy_dest_path)
+
+        data = open(geojson_zip_path+".zip", "rb")
+
         data_upload_response = self.post_url(data_upload_url, headers=headers, data=data)
 
         data.close()
+        shutil.rmtree(temp_path)
 
         if data_upload_response.status_code != 202:
             errorMsg =  "Unable to upload data. Response status code " + str(data_upload_response.status_code) + ". " + data_upload_response.text
