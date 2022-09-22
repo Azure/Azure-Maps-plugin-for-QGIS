@@ -242,6 +242,7 @@ class AzureMapsPlugin:
             self.dlg.getFeaturesButton.clicked.connect(self.get_features_clicked)
             self.dlg.getFeaturesButton_2.clicked.connect(self.get_features_clicked)
             self.dlg.createDatasetButton.clicked.connect(self.create_dataset_clicked)
+            self.dlg.uploadDatasetButton.clicked.connect(self.upload_dataset_clicked)
             self.dlg.closeButton.clicked.connect(self.close_button_clicked)
             self.dlg.floorPicker.currentIndexChanged.connect(self.floor_picker_changed)
             self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.WindowSystemMenuHint)
@@ -310,6 +311,33 @@ class AzureMapsPlugin:
         self.close_button_clicked()
         self.dlg.createDatasetButton.setEnabled(False)
 
+        # Create a new dataset group layer
+        dataset_id = "ContosoCreatedInQGIS"
+        self.base_group = self.root.insertGroup(0, dataset_id)
+        
+        # Add a group layer delete event listener
+        self.root.removedChildren.connect(self._on_layer_removed)
+
+        facility_layer = QgsVectorLayer("MultiPolygon", "Facility", "memory")
+        pr = facility_layer.dataProvider()
+        self.base_group.addLayer(facility_layer)
+        
+        # Enter editing mode
+        facility_layer.startEditing()
+        # add fields
+        pr.addAttributes( [ QgsField("name", QVariant.String),
+                        QgsField("age",  QVariant.Int),
+                        QgsField("size", QVariant.Double) ] )
+        
+        # Commit changes
+        facility_layer.commitChanges()
+        # Show in project
+        QgsProject.instance().addMapLayer(facility_layer)
+
+    def upload_dataset_clicked(self):
+        self.close_button_clicked()
+        self.dlg.uploadDatasetButton.setEnabled(False)
+
         # Determine host name
         if str(self.dlg.geographyDropdown.currentText()) == "United States":
             host = "https://us.atlas.microsoft.com"
@@ -371,7 +399,7 @@ class AzureMapsPlugin:
         if data_upload_response.status_code != 202:
             errorMsg =  "Unable to upload data. Response status code " + str(data_upload_response.status_code) + ". " + data_upload_response.text
             self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-            self.dlg.createDatasetButton.setEnabled(True)
+            self.dlg.uploadDatasetButton.setEnabled(True)
             return
 
         # Check Data Upload Status
@@ -385,7 +413,7 @@ class AzureMapsPlugin:
             if data_upload_status_response.status_code != 200:
                 errorMsg = "Unable to check data upload status. Response status code " + str(data_upload_status_response.status_code) + ". " + data_upload_status_response.text
                 self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-                self.dlg.createDatasetButton.setEnabled(True)
+                self.dlg.uploadDatasetButton.setEnabled(True)
                 return
 
             data_upload_status_response_json = json.loads(data_upload_status_response.content)
@@ -396,7 +424,7 @@ class AzureMapsPlugin:
         if data_upload_status != "Succeeded":
             errorMsg = "Unable to check data upload status. Response status code " + str(data_upload_status_response.status_code) + ". " + data_upload_status_response.text
             self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-            self.dlg.createDatasetButton.setEnabled(True)
+            self.dlg.uploadDatasetButton.setEnabled(True)
             return
 
         udid = data_upload_status_response.headers["Resource-Location"]
@@ -414,7 +442,7 @@ class AzureMapsPlugin:
         if create_dataset_response.status_code != 202:
             errorMsg =  "Unable to upload data. Response status code " + str(create_dataset_response.status_code) + ". " + create_dataset_response.text
             self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-            self.dlg.createDatasetButton.setEnabled(True)
+            self.dlg.uploadDatasetButton.setEnabled(True)
             return
 
         # Check Create Dataset Status
@@ -428,7 +456,7 @@ class AzureMapsPlugin:
             if create_dataset_status_response.status_code != 200:
                 errorMsg = "Unable to check create dataset status. Response status code " + str(create_dataset_status_response.status_code) + ". " + create_dataset_status_response.text
                 self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-                self.dlg.createDatasetButton.setEnabled(True)
+                self.dlg.uploadDatasetButton.setEnabled(True)
                 return
 
             create_dataset_status_response_json = json.loads(create_dataset_status_response.content)
@@ -439,7 +467,7 @@ class AzureMapsPlugin:
         if create_dataset_status != "Succeeded":
             errorMsg = "Unable to check create dataset status. Response status code " + str(create_dataset_status_response.status_code) + ". " + create_dataset_status_response.text
             self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-            self.dlg.createDatasetButton.setEnabled(True)
+            self.dlg.uploadDatasetButton.setEnabled(True)
             return
 
         datasetId = create_dataset_status_response.headers["Resource-Location"]
@@ -450,7 +478,7 @@ class AzureMapsPlugin:
         time.sleep(10)
         self._progress_base.close()
 
-        self.dlg.createDatasetButton.setEnabled(True)
+        self.dlg.uploadDatasetButton.setEnabled(True)
         return
             
     def get_features_clicked(self):

@@ -85,6 +85,13 @@
         </widget>
        </item>
        <item>
+        <widget class="QPushButton" name="uploadDatasetButton">
+         <property name="text">
+          <string>Upload Dataset</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <spacer name="verticalSpacer_3">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
