@@ -1,4 +1,19 @@
 {
-	"type": "FeatureCollection",
-	"features": []
+    "type" : "FeatureCollection",
+    "features" : [
+        {
+            "type" : "Feature",
+            "geometry": null,
+            "properties" : {                
+                "categoryId": "0d965c70-80b7-4837-a2f3-1cc494cfe273",
+                "addressId": "9c9179f8-0528-4551-a9c6-7f9e131cd2ab",
+                "name": "Microsoft Campus",
+                "anchorPoint": {
+                    "type": "Point",
+                    "coordinates": [-122.13698174674717, 47.642347755120824]
+                }
+            },
+            "id" : "5371b433-62d0-4587-af10-3f674496bfea"
+        }
+    ]
 }

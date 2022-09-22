@@ -307,32 +307,65 @@ class AzureMapsPlugin:
         self.dlg.creatorStatus_2.setText(status)
         QApplication.processEvents()
 
-    def create_dataset_clicked(self):
-        self.close_button_clicked()
-        self.dlg.createDatasetButton.setEnabled(False)
+    def get_features_saved(self, layer):
+        exportedFeatures = []
+        exporter = QgsJsonExporter(layer, 7)
+        features = layer.getFeatures()
+        for feature in features:
+            exportedFeature = exporter.exportFeature(feature, {})
+            exportedFeatures.append(exportedFeature)
+        return exportedFeatures
 
-        # Create a new dataset group layer
-        dataset_id = "ContosoCreatedInQGIS"
-        self.base_group = self.root.insertGroup(0, dataset_id)
-        
-        # Add a group layer delete event listener
-        self.root.removedChildren.connect(self._on_layer_removed)
+    def get_features_in_memory(self, layer):
+        exportedFeatures = []
+        exporter = QgsJsonExporter(layer, 7)
+        edits = layer.editBuffer()
+        adds = edits.addedFeatures()
+        for fid in adds:
+            feature = layer.getFeature(fid)
+            exportedFeature = exporter.exportFeature(feature, {}, fid)
+            exportedFeatures.append(exportedFeature)
+        return exportedFeatures
 
-        facility_layer = QgsVectorLayer("MultiPolygon", "Facility", "memory")
-        pr = facility_layer.dataProvider()
-        self.base_group.addLayer(facility_layer)
-        
+    def parse_geometry(self, feature):
+        geojson = json.loads(feature)
+        geometry = str(geojson["geometry"])
+        geometry = geometry.replace("'", '"')
+        geometry = geometry.replace("}", "},")
+        geometry = '"geometry" : '+geometry
+        return geometry
+
+    def create_layer(self, name):
+        layer = QgsVectorLayer("MultiPolygon", name, "memory")
+        pr = layer.dataProvider()
         # Enter editing mode
-        facility_layer.startEditing()
+        layer.startEditing()
         # add fields
         pr.addAttributes( [ QgsField("name", QVariant.String),
                         QgsField("age",  QVariant.Int),
                         QgsField("size", QVariant.Double) ] )
-        
         # Commit changes
-        facility_layer.commitChanges()
-        # Show in project
-        QgsProject.instance().addMapLayer(facility_layer)
+        layer.commitChanges()
+        QgsProject.instance().addMapLayer(layer)
+
+    def create_dataset_clicked(self):
+        self.close_button_clicked()
+        self.dlg.createDatasetButton.setEnabled(False)
+        self.create_layer("Facility")
+        self.create_layer("Unit")
+
+    def update_file_geometry(self, file, geometry):
+        read_file = open(file, "r")
+        replaced_content = ""
+        for line in read_file:        
+            line.strip()
+            new_line = line.replace('"geometry": null,', geometry)
+            replaced_content = replaced_content + new_line + "\n"
+        read_file.close()
+
+        write_facility_file = open(file, "w")
+        write_facility_file.write(replaced_content)
+        write_facility_file.close()
 
     def upload_dataset_clicked(self):
         self.close_button_clicked()
@@ -387,6 +420,18 @@ class AzureMapsPlugin:
         geojson_zip_path = temp_path + "/geojson_temp"
 
         shutil.copytree(geojson_path, geojson_copy_dest_path)
+        
+        # Update geojson files with new data before zipping
+        facility_layers = QgsProject.instance().mapLayersByName('Facility')
+        facility_features = self.get_features_saved(facility_layers[0])
+
+        unit_layers = QgsProject.instance().mapLayersByName('Unit')
+        unit_features = self.get_features_saved(unit_layers[0])
+        
+        self.update_file_geometry(geojson_copy_dest_path + "/facility.geojson", self.parse_geometry(facility_features[0]))
+        self.update_file_geometry(geojson_copy_dest_path + "/level.geojson", self.parse_geometry(facility_features[0]))
+        self.update_file_geometry(geojson_copy_dest_path + "/unit.geojson", self.parse_geometry(unit_features[0]))
+
         shutil.make_archive(geojson_zip_path, "zip", geojson_copy_dest_path)
 
         data = open(geojson_zip_path+".zip", "rb")
@@ -474,8 +519,14 @@ class AzureMapsPlugin:
         datasetId = datasetId.removeprefix(host+"/datasets/")
         datasetId = datasetId.removesuffix("?api-version="+dataset_api_version)
 
-        progress.next("Dataset " + datasetId + " created successfully.")
-        time.sleep(10)
+        progress.next("Success!")
+        time.sleep(3)
+        self.msgBar.pushMessage(
+            "Info",
+            "Dataset " + datasetId + " created successfully.",
+            level=Qgis.Info,
+            duration=0,
+        )
         self._progress_base.close()
 
         self.dlg.uploadDatasetButton.setEnabled(True)

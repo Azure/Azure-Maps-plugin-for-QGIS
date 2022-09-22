@@ -1,4 +1,21 @@
 {
-	"type": "FeatureCollection",
-	"features": []
+    "type" : "FeatureCollection",
+    "features" : [
+        {
+            "type" : "Feature",
+            "geometry" : null,
+            "properties" : {
+                "name": "facility.microsoft"
+            },
+            "id": "0d965c70-80b7-4837-a2f3-1cc494cfe273"
+        },
+        {
+            "type" : "Feature",
+            "geometry" : null,
+            "properties" : {
+                "name": "room.conference"
+            },
+            "id": "0d965c70-80b7-4837-a2f3-2cc494cfe999"
+        }
+    ]
 }

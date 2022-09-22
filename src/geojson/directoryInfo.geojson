@@ -1,4 +1,21 @@
 {
-	"type": "FeatureCollection",
-	"features": []
+    "type" : "FeatureCollection",
+    "features" : [
+        {
+            "type" : "Feature",
+            "geometry" : null,
+            "properties" : {
+                "streetAddress": "1 Microsoft Way",
+                "unit": "",
+                "locality": "",
+                "adminDivisions": [ "Redmond", "WA", "United States" ],
+                "postalCode": "98052",
+                "name": "Microsoft",
+                "phoneNumber": "1 (425) 722-4725",
+                "website": "www.microsoft.com",
+                "hoursOfOperation": "Mo-Fr 08:00-17:00 open"
+            },
+            "id" : "9c9179f8-0528-4551-a9c6-7f9e131cd2ab"
+        }
+    ]
 }

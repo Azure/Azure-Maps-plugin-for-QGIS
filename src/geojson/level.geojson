@@ -1,4 +1,15 @@
 {
-	"type": "FeatureCollection",
-	"features": []
+    "type" : "FeatureCollection",
+    "features" : [
+        {
+            "type" : "Feature",
+            "geometry": null,
+            "properties" : {
+				"facilityId":"5371b433-62d0-4587-af10-3f674496bfea",
+				"name":"sampleLevel",
+				"ordinal":1
+            },
+            "id": "3d965c70-80b7-4837-a2f3-111111111"
+        }
+    ]
 }
