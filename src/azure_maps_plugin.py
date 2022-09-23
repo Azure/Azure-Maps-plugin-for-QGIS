@@ -327,6 +327,12 @@ class AzureMapsPlugin:
             exportedFeatures.append(exportedFeature)
         return exportedFeatures
 
+    def parse_id (self, feature):
+        geojson = json.loads(feature)
+        id = str(geojson["id"])
+        id = '"id" : '+ id + ','
+        return id
+
     def parse_geometry(self, feature):
         geojson = json.loads(feature)
         geometry = str(geojson["geometry"])
@@ -341,31 +347,52 @@ class AzureMapsPlugin:
         # Enter editing mode
         layer.startEditing()
         # add fields
-        pr.addAttributes( [ QgsField("name", QVariant.String),
-                        QgsField("age",  QVariant.Int),
-                        QgsField("size", QVariant.Double) ] )
+        pr.addAttributes( [ QgsField("name", QVariant.String)] )
         # Commit changes
         layer.commitChanges()
         QgsProject.instance().addMapLayer(layer)
-
-    def create_dataset_clicked(self):
-        self.close_button_clicked()
-        self.dlg.createDatasetButton.setEnabled(False)
-        self.create_layer("Facility")
-        self.create_layer("Unit")
-
-    def update_file_geometry(self, file, geometry):
+    
+    def update_file_geometry(self, file, features):
         read_file = open(file, "r")
-        replaced_content = ""
+        
+        file_content = ""
         for line in read_file:        
-            line.strip()
-            new_line = line.replace('"geometry": null,', geometry)
-            replaced_content = replaced_content + new_line + "\n"
+            file_content = file_content + line
+
+        json_content = json.loads(file_content)
+        feature_data = json_content["features"][0]
+
+        for i in range(len(features)-1):
+            json_content["features"].append(feature_data)                        
+
+        replaced_content = str(json_content).replace("'", '"').replace("True", "true")
+        for feature in features:    
+            geometry = self.parse_geometry(feature)
+            replaced_content = replaced_content.replace('"geometry": None,', geometry, 1)
+            feature_id = self.parse_id(feature)
+            replaced_content = replaced_content.replace('"id": None,', feature_id, 1)
+
         read_file.close()
 
         write_facility_file = open(file, "w")
         write_facility_file.write(replaced_content)
         write_facility_file.close()
+
+    def create_dataset_clicked(self):
+        self.close_button_clicked()
+        self.dlg.createDatasetButton.setEnabled(False)
+        
+        msg = self.QMessageBox(
+            QMessageBox.Information,
+            "Create Dataset",
+            "First, start by creating a single facility feature in the Facility layer.",
+            informativeText="The facility feature class defines the area of the site, building footprint, and so on.",
+        )
+        msg.exec()
+        self.create_layer("Facility")
+
+        self.create_layer("Unit")
+        self.dlg.createDatasetButton.setEnabled(True)
 
     def upload_dataset_clicked(self):
         self.close_button_clicked()
@@ -392,7 +419,7 @@ class AzureMapsPlugin:
 
         # Start progress dialog
         progress = ProgressIterator(
-            count=4,
+            count=5,
             msg="Uploading user data first. Please wait.", window_title="Creating New Dataset"
         )
         # Override progress dialog config
@@ -428,9 +455,9 @@ class AzureMapsPlugin:
         unit_layers = QgsProject.instance().mapLayersByName('Unit')
         unit_features = self.get_features_saved(unit_layers[0])
         
-        self.update_file_geometry(geojson_copy_dest_path + "/facility.geojson", self.parse_geometry(facility_features[0]))
-        self.update_file_geometry(geojson_copy_dest_path + "/level.geojson", self.parse_geometry(facility_features[0]))
-        self.update_file_geometry(geojson_copy_dest_path + "/unit.geojson", self.parse_geometry(unit_features[0]))
+        self.update_file_geometry(geojson_copy_dest_path + "/facility.geojson", facility_features)
+        self.update_file_geometry(geojson_copy_dest_path + "/level.geojson", facility_features)
+        self.update_file_geometry(geojson_copy_dest_path + "/unit.geojson", unit_features)
 
         shutil.make_archive(geojson_zip_path, "zip", geojson_copy_dest_path)
 
@@ -475,9 +502,11 @@ class AzureMapsPlugin:
         udid = data_upload_status_response.headers["Resource-Location"]
         udid = udid.removeprefix(host+"/mapData/metadata/")
         udid = udid.removesuffix("?api-version="+data_upload_api_version)
+        progress.next("User data " + udid + " uploaded.")
+        time.sleep(2)
 
         # Create Dataset
-        progress.next("User data " + udid + " successfully uploaded. Now creating dataset.")
+        progress.next("Creating dataset.")
         dataset_endpoint = host + "/datasets/"
         query_string = "?" + urllib.parse.urlencode({"api-version": dataset_api_version, "description": "Created with QGIS", "udid": udid, "outputOntology": "facility-2.0"}) + subscription_key
         dataset_url = dataset_endpoint + query_string
