@@ -391,7 +391,26 @@ class AzureMapsPlugin:
         msg.exec()
         self.create_layer("Facility")
 
+        msg = self.QMessageBox(
+            QMessageBox.Information,
+            "Create Dataset",
+            "Now, that the facility is created, add features to the unit layer.",
+            informativeText="The unit feature class defines a physical and non-overlapping area that can be occupied and traversed by a navigating agent.\nA unit can be a hallway, a room, a courtyard, and so on.",
+        )
+        msg.exec()
+
         self.create_layer("Unit")
+        self.create_layer("AreaElement")
+        self.create_layer("Category")
+        self.create_layer("DirectoryInfo")
+        self.create_layer("Level")
+        self.create_layer("LineElement")
+        self.create_layer("Opening")
+        self.create_layer("PointElement")
+        self.create_layer("Structure")
+        self.create_layer("VerticalPenetration")
+        self.create_layer("Zone")
+
         self.dlg.createDatasetButton.setEnabled(True)
 
     def upload_dataset_clicked(self):
@@ -491,7 +510,7 @@ class AzureMapsPlugin:
             data_upload_status_response_json = json.loads(data_upload_status_response.content)
             data_upload_status = data_upload_status_response_json["status"]
             data_upload_status_response = self.get_url(data_upload_status_url)
-            time.sleep(5)
+            time.sleep(1)
 
         if data_upload_status != "Succeeded":
             errorMsg = "Unable to check data upload status. Response status code " + str(data_upload_status_response.status_code) + ". " + data_upload_status_response.text
@@ -536,7 +555,7 @@ class AzureMapsPlugin:
             create_dataset_status_response_json = json.loads(create_dataset_status_response.content)
             create_dataset_status = create_dataset_status_response_json["status"]
             create_dataset_status_response = self.get_url(create_dataset_status_url)
-            time.sleep(5)
+            time.sleep(1)
 
         if create_dataset_status != "Succeeded":
             errorMsg = "Unable to check create dataset status. Response status code " + str(create_dataset_status_response.status_code) + ". " + create_dataset_status_response.text
