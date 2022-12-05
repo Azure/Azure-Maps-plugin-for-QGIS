@@ -1,16 +1,4 @@
 {
-    "type": "FeatureCollection",
-    "name": "Building",
-    "features": [
-        {
-            "type": "Feature",
-	        "id": null,
-            "geometry": null,
-            "properties": {
-                "categoryId": "0d965c70-80b7-4837-a2f3-2cc494cfe999",
-                "levelId": "3d965c70-80b7-4837-a2f3-111111111",
-		        "isOpenArea": true
-            }
-        }
-    ]
+	"type": "FeatureCollection",
+	"features": []
 }

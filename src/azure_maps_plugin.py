@@ -42,14 +42,12 @@ from .validation_utility import ValidationUtility
 
 from shapely.geometry import mapping, shape
 
-from zipfile import ZipFile
-
 import os.path
 import requests
+import time
 import urllib.parse
 import json
-import time
-import shutil
+
 
 class AzureMapsPlugin:
     """QGIS Plugin Implementation."""
@@ -241,8 +239,6 @@ class AzureMapsPlugin:
             self.first_start = False
             self.dlg.getFeaturesButton.clicked.connect(self.get_features_clicked)
             self.dlg.getFeaturesButton_2.clicked.connect(self.get_features_clicked)
-            self.dlg.createDatasetButton.clicked.connect(self.create_dataset_clicked)
-            self.dlg.uploadDatasetButton.clicked.connect(self.upload_dataset_clicked)
             self.dlg.closeButton.clicked.connect(self.close_button_clicked)
             self.dlg.floorPicker.currentIndexChanged.connect(self.floor_picker_changed)
             self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.WindowSystemMenuHint)
@@ -307,279 +303,6 @@ class AzureMapsPlugin:
         self.dlg.creatorStatus_2.setText(status)
         QApplication.processEvents()
 
-    def get_features_saved(self, layer):
-        exportedFeatures = []
-        exporter = QgsJsonExporter(layer, 7)
-        features = layer.getFeatures()
-        for feature in features:
-            exportedFeature = exporter.exportFeature(feature, {})
-            exportedFeatures.append(exportedFeature)
-        return exportedFeatures
-
-    def get_features_in_memory(self, layer):
-        exportedFeatures = []
-        exporter = QgsJsonExporter(layer, 7)
-        edits = layer.editBuffer()
-        adds = edits.addedFeatures()
-        for fid in adds:
-            feature = layer.getFeature(fid)
-            exportedFeature = exporter.exportFeature(feature, {}, fid)
-            exportedFeatures.append(exportedFeature)
-        return exportedFeatures
-
-    def parse_id (self, feature):
-        geojson = json.loads(feature)
-        id = str(geojson["id"])
-        id = '"id" : '+ id + ','
-        return id
-
-    def parse_geometry(self, feature):
-        geojson = json.loads(feature)
-        geometry = str(geojson["geometry"])
-        geometry = geometry.replace("'", '"')
-        geometry = geometry.replace("}", "},")
-        geometry = '"geometry" : '+geometry
-        return geometry
-
-    def create_layer(self, name):
-        layer = QgsVectorLayer("MultiPolygon", name, "memory")
-        pr = layer.dataProvider()
-        # Enter editing mode
-        layer.startEditing()
-        # add fields
-        pr.addAttributes( [ QgsField("name", QVariant.String)] )
-        # Commit changes
-        layer.commitChanges()
-        QgsProject.instance().addMapLayer(layer)
-    
-    def update_file_geometry(self, file, features):
-        read_file = open(file, "r")
-        
-        file_content = ""
-        for line in read_file:        
-            file_content = file_content + line
-
-        json_content = json.loads(file_content)
-        feature_data = json_content["features"][0]
-
-        for i in range(len(features)-1):
-            json_content["features"].append(feature_data)                        
-
-        replaced_content = str(json_content).replace("'", '"').replace("True", "true")
-        for feature in features:    
-            geometry = self.parse_geometry(feature)
-            replaced_content = replaced_content.replace('"geometry": None,', geometry, 1)
-            feature_id = self.parse_id(feature)
-            replaced_content = replaced_content.replace('"id": None,', feature_id, 1)
-
-        read_file.close()
-
-        write_facility_file = open(file, "w")
-        write_facility_file.write(replaced_content)
-        write_facility_file.close()
-
-    def create_dataset_clicked(self):
-        self.close_button_clicked()
-        self.dlg.createDatasetButton.setEnabled(False)
-        
-        msg = self.QMessageBox(
-            QMessageBox.Information,
-            "Create Dataset",
-            "First, start by creating a single facility feature in the Facility layer.",
-            informativeText="The facility feature class defines the area of the site, building footprint, and so on.",
-        )
-        msg.exec()
-        self.create_layer("Facility")
-
-        msg = self.QMessageBox(
-            QMessageBox.Information,
-            "Create Dataset",
-            "Now, that the facility is created, add features to the unit layer.",
-            informativeText="The unit feature class defines a physical and non-overlapping area that can be occupied and traversed by a navigating agent.\nA unit can be a hallway, a room, a courtyard, and so on.",
-        )
-        msg.exec()
-
-        self.create_layer("Unit")
-        self.create_layer("AreaElement")
-        self.create_layer("Category")
-        self.create_layer("DirectoryInfo")
-        self.create_layer("Level")
-        self.create_layer("LineElement")
-        self.create_layer("Opening")
-        self.create_layer("PointElement")
-        self.create_layer("Structure")
-        self.create_layer("VerticalPenetration")
-        self.create_layer("Zone")
-
-        self.dlg.createDatasetButton.setEnabled(True)
-
-    def upload_dataset_clicked(self):
-        self.close_button_clicked()
-        self.dlg.uploadDatasetButton.setEnabled(False)
-
-        # Determine host name
-        if str(self.dlg.geographyDropdown.currentText()) == "United States":
-            host = "https://us.atlas.microsoft.com"
-        elif str(self.dlg.geographyDropdown.currentText()) == "Europe":
-            host = "https://eu.atlas.microsoft.com"
-        elif str(self.dlg.geographyDropdown.currentText()) == "Test":
-            host = "https://us.t-azmaps.azurelbs.com"
-        else:
-            host = "https://atlas.microsoft.com"
-
-        subscription_key = ""
-        if self.dlg.skButton.isChecked():
-            subscription_key = "&" + urllib.parse.urlencode(
-                {"subscription-key": self.dlg.sharedKey.text()}
-            )
-
-        data_upload_api_version = "2.0"
-        dataset_api_version = "2022-09-01-preview"
-
-        # Start progress dialog
-        progress = ProgressIterator(
-            count=5,
-            msg="Uploading user data first. Please wait.", window_title="Creating New Dataset"
-        )
-        # Override progress dialog config
-        self._progress_base = progress._get_progress_dialog()
-        self._progress_base.setFixedSize(
-            self._progress_base.width() + 175, self._progress_base.height()
-        )
-        self._progress_base.setCancelButton(None)  # Hide cancel button
-        self._progress_base.setWindowFlags(
-            Qt.WindowSystemMenuHint | Qt.WindowStaysOnTopHint
-        )  # Disable close button, always on top
-        self._progress_base.show()  # Immediately show the progress bar
-        QApplication.processEvents()
-        
-        # Upload zip to Data Upload service
-        data_upload_endpoint = host + "/mapData/"
-        query_string = "?" + urllib.parse.urlencode({"api-version": data_upload_api_version, "dataFormat": "zip", "description": "Created with QGIS"}) + subscription_key
-
-        data_upload_url = data_upload_endpoint + query_string
-        headers = {"Content-Type": "application/json"}
-
-        geojson_path = self.plugin_dir + "/geojson"
-        temp_path = self.plugin_dir + "/temp"
-        geojson_copy_dest_path = temp_path + "/geojson"
-        geojson_zip_path = temp_path + "/geojson_temp"
-
-        shutil.copytree(geojson_path, geojson_copy_dest_path)
-        
-        # Update geojson files with new data before zipping
-        facility_layers = QgsProject.instance().mapLayersByName('Facility')
-        facility_features = self.get_features_saved(facility_layers[0])
-
-        unit_layers = QgsProject.instance().mapLayersByName('Unit')
-        unit_features = self.get_features_saved(unit_layers[0])
-        
-        self.update_file_geometry(geojson_copy_dest_path + "/facility.geojson", facility_features)
-        self.update_file_geometry(geojson_copy_dest_path + "/level.geojson", facility_features)
-        self.update_file_geometry(geojson_copy_dest_path + "/unit.geojson", unit_features)
-
-        shutil.make_archive(geojson_zip_path, "zip", geojson_copy_dest_path)
-
-        data = open(geojson_zip_path+".zip", "rb")
-
-        data_upload_response = self.post_url(data_upload_url, headers=headers, data=data)
-
-        data.close()
-        shutil.rmtree(temp_path)
-
-        if data_upload_response.status_code != 202:
-            errorMsg =  "Unable to upload data. Response status code " + str(data_upload_response.status_code) + ". " + data_upload_response.text
-            self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-            self.dlg.uploadDatasetButton.setEnabled(True)
-            return
-
-        # Check Data Upload Status
-        time.sleep(5)
-        progress.next("Checking user data upload status.")
-        data_upload_status_url = data_upload_response.headers["Operation-Location"] + subscription_key
-        data_upload_status_response = self.get_url(data_upload_status_url)
-        data_upload_status = "Running"
-
-        while data_upload_status == "Running":
-            if data_upload_status_response.status_code != 200:
-                errorMsg = "Unable to check data upload status. Response status code " + str(data_upload_status_response.status_code) + ". " + data_upload_status_response.text
-                self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-                self.dlg.uploadDatasetButton.setEnabled(True)
-                return
-
-            data_upload_status_response_json = json.loads(data_upload_status_response.content)
-            data_upload_status = data_upload_status_response_json["status"]
-            data_upload_status_response = self.get_url(data_upload_status_url)
-            time.sleep(1)
-
-        if data_upload_status != "Succeeded":
-            errorMsg = "Unable to check data upload status. Response status code " + str(data_upload_status_response.status_code) + ". " + data_upload_status_response.text
-            self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-            self.dlg.uploadDatasetButton.setEnabled(True)
-            return
-
-        udid = data_upload_status_response.headers["Resource-Location"]
-        udid = udid.removeprefix(host+"/mapData/metadata/")
-        udid = udid.removesuffix("?api-version="+data_upload_api_version)
-        progress.next("User data " + udid + " uploaded.")
-        time.sleep(2)
-
-        # Create Dataset
-        progress.next("Creating dataset.")
-        dataset_endpoint = host + "/datasets/"
-        query_string = "?" + urllib.parse.urlencode({"api-version": dataset_api_version, "description": "Created with QGIS", "udid": udid, "outputOntology": "facility-2.0"}) + subscription_key
-        dataset_url = dataset_endpoint + query_string
-        
-        create_dataset_response = self.post_url(dataset_url)
-
-        if create_dataset_response.status_code != 202:
-            errorMsg =  "Unable to upload data. Response status code " + str(create_dataset_response.status_code) + ". " + create_dataset_response.text
-            self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-            self.dlg.uploadDatasetButton.setEnabled(True)
-            return
-
-        # Check Create Dataset Status
-        time.sleep(5)
-        progress.next("Checking dataset creation status.")
-        create_dataset_status_url = create_dataset_response.headers["Operation-Location"] + subscription_key
-        create_dataset_status_response = self.get_url(create_dataset_status_url)
-        create_dataset_status = "Running"
-
-        while create_dataset_status == "Running":
-            if create_dataset_status_response.status_code != 200:
-                errorMsg = "Unable to check create dataset status. Response status code " + str(create_dataset_status_response.status_code) + ". " + create_dataset_status_response.text
-                self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-                self.dlg.uploadDatasetButton.setEnabled(True)
-                return
-
-            create_dataset_status_response_json = json.loads(create_dataset_status_response.content)
-            create_dataset_status = create_dataset_status_response_json["status"]
-            create_dataset_status_response = self.get_url(create_dataset_status_url)
-            time.sleep(1)
-
-        if create_dataset_status != "Succeeded":
-            errorMsg = "Unable to check create dataset status. Response status code " + str(create_dataset_status_response.status_code) + ". " + create_dataset_status_response.text
-            self.msgBar.pushMessage("Error", errorMsg, level=Qgis.Critical, duration=0)
-            self.dlg.uploadDatasetButton.setEnabled(True)
-            return
-
-        datasetId = create_dataset_status_response.headers["Resource-Location"]
-        datasetId = datasetId.removeprefix(host+"/datasets/")
-        datasetId = datasetId.removesuffix("?api-version="+dataset_api_version)
-
-        progress.next("Success!")
-        time.sleep(3)
-        self.msgBar.pushMessage(
-            "Info",
-            "Dataset " + datasetId + " created successfully.",
-            level=Qgis.Info,
-            duration=0,
-        )
-        self._progress_base.close()
-
-        self.dlg.uploadDatasetButton.setEnabled(True)
-        return
-            
     def get_features_clicked(self):
         self.close_button_clicked()
         self._getFeaturesButton_setEnabled(False)
@@ -2007,17 +1730,18 @@ class AzureMapsPlugin:
         self.dlg.getFeaturesButton.setEnabled(boolean)
         self.dlg.getFeaturesButton_2.setEnabled(boolean)
 
-    def apply_url(self, url, verb, method, headers=None, data=None, json=None):
+    def apply_url(self, url, verb, method):
+        # print(verb + " " + url)
+        start = time.time()
+        headers = {}
+
         try:
-            if verb == "POST":
-                r = requests.post(url, headers=headers, data=data, json=json, timeout=300, verify=True)
-            else:
-                r = method(url, headers=headers, timeout=30, verify=True)
-            
+            r = method(url, headers=headers, timeout=30, verify=True)
+            # print("{}: {}".format(r.status_code, time.time() - start))
+
             if "atlas.azure-api.net" in r.text:
                 print("Service in PROD is still returning internal hostname")
             return r
-
         # timed out with predefined value
         except requests.exceptions.Timeout as errt:
             QgsMessageLog.logMessage(
@@ -2033,14 +1757,14 @@ class AzureMapsPlugin:
         # other exception
         except requests.exceptions.RequestException as err:
             QgsMessageLog.logMessage(
-                "Oops: unknown error occurred while sending the request" + str(err),
+                "OOps: unknown error occurred while sending the request" + str(err),
                 "Messages",
                 Qgis.Critical,
             )
             self._progress_base.close()
         except:
             QgsMessageLog.logMessage(
-                "Oops: unexpected exception occurred while sending the request.",
+                "OOps: unexpected exception occurred while sending the request.",
                 "Messages",
                 Qgis.Critical,
             )
@@ -2055,9 +1779,6 @@ class AzureMapsPlugin:
 
     def delete_url(self, url):
         return self.apply_url(url, "DELETE", requests.delete)
-
-    def post_url(self, url, headers=None, data=None, json=None):
-        return self.apply_url(url, "POST", requests.post, headers=headers, data=data, json=json)
 
     def hideGroup(self, group):
         if isinstance(group, QgsLayerTreeGroup):

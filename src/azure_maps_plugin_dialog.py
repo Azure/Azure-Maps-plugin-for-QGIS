@@ -54,7 +54,6 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
 
         self.getFeaturesButton.clicked.connect(self.on_get_features_clicked)
         self.getFeaturesButton_2.clicked.connect(self.on_get_features_clicked)
-        self.uploadDatasetButton.clicked.connect(self.saveSettings)
         self.currentExtentButton.clicked.connect(self.on_current_extent_clicked)
         self.allExtentButton.clicked.connect(self.on_all_extent_clicked)
         # self.adButton.clicked.connect(self.on_ad_button_clicked)
