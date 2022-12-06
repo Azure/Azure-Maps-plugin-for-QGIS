@@ -87,6 +87,11 @@
          </item>
          <item>
           <property name="text">
+           <string>Test</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
            <string>Europe</string>
           </property>
          </item>
@@ -450,7 +455,7 @@ S</string>
         <enum>Qt::PlainText</enum>
        </property>
        <property name="pixmap">
-        <pixmap resource="resources.qrc">:/plugins/azure_maps/icon-circle.png</pixmap>
+        <pixmap>:/plugins/azure_maps/media/icon-circle.png</pixmap>
        </property>
        <property name="scaledContents">
         <bool>true</bool>
@@ -495,7 +500,7 @@ S</string>
         </font>
        </property>
        <property name="text">
-        <string>Version 1.4.5 Experimental</string>
+        <string>Version 1.4.7 Experimental</string>
        </property>
        <property name="alignment">
         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>

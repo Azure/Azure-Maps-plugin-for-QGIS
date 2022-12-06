@@ -1,14 +1,39 @@
-# Project
+# Azure Maps QGIS Plugin
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+## Development
 
-As the maintainer of this project, please make a few updates:
+### Prerequisites
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+- [QGIS v3.8 or greater](https://www.qgis.org/en/site/forusers/download.html)(Long term release recommended)
+    1. Install [Plugin Reloader](https://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/plugins/plugins.html#tips-and-tricks) plugin for hot reloading
+- [QT Creator](https://www.qt.io/offline-installers) for UI design
+- [Python 3](https://www.python.org/downloads/windows/)
+
+### Build: Windows
+
+1. Install GNU Make
+
+    ```powershell
+    choco install make
+    ```
+
+2. Update `HOME` variable in Makefile to point to your user's path
+
+3. Update line 2 in `.\src\build\compile.bat` to point to the correct version of QGIS installed
+
+4. Once the previous steps are complete, you may run the following command whenever you want to apply your changes to the plugin directory:
+
+    ```powershell
+    make win-deploy 
+    ```
+
+5. Restart QGIS or execute Plugin Reloader to reload the updated plugin.
+
+### References
+
+- [QGIS Plugin Home Page](https://plugins.qgis.org/)
+- [Structuring QGIS Python Plugins](https://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/plugins/plugins.html#structuring-python-plugins)
+- [Building a Python Plugin (QGIS3)](https://www.qgistutorials.com/en/docs/3/building_a_python_plugin.html#building-a-python-plugin-qgis3)
 
 ## Contributing
 

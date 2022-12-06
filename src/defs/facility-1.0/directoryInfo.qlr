@@ -9,7 +9,7 @@
   <maplayers>
     <maplayer minScale="1e+08" autoRefreshTime="0" autoRefreshEnabled="0" type="vector" geometry="No geometry" refreshOnNotifyMessage="" styleCategories="AllStyleCategories" maxScale="0" refreshOnNotifyEnabled="0" hasScaleBasedVisibilityFlag="0" wkbType="NoGeometry" readOnly="0">
       <id>directoryInfo_f0d85c93_0e9b_44d4_b214_034d6fbb17a2</id>
-      <datasource>memory?geometry=NoGeometry&amp;index=yes&amp;field=id:String(0,0)&amp;field=originalId:String(0,0)&amp;field=name:String(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)&amp;field=streetAddress:String(0,0)&amp;field=unit:String(0,0)&amp;field=locality:String(0,0)&amp;field=postalCode:String(0,0)&amp;field=phoneNumber:String(0,0)&amp;field=website:String(0,0)&amp;field=hoursOfOperation:String(0,0)</datasource>
+      <datasource>memory?geometry=NoGeometry&amp;index=yes&amp;field=id:String(0,0)&amp;field=originalId:String(0,0)&amp;field=name:String(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)&amp;field=streetAddress:String(0,0)&amp;field=unit:String(0,0)&amp;field=locality:String(0,0)&amp;field=postalCode:String(0,0)&amp;field=phoneNumber:String(0,0)&amp;field=website:String(0,0)&amp;field=hoursOfOperation:String(0,0)&amp;field=adminDivisions:string(0,0)[]</datasource>
       <keywordList>
         <value></value>
       </keywordList>
@@ -167,7 +167,15 @@
             </config>
           </editWidget>
         </field>
+        <field name="adminDivisions" configurationFlags="None">
+          <editWidget type="">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
       </fieldConfiguration>
+      
       <aliases>
         <alias index="0" field="id" name=""/>
         <alias index="1" field="originalId" name=""/>
@@ -181,6 +189,7 @@
         <alias index="9" field="phoneNumber" name=""/>
         <alias index="10" field="website" name=""/>
         <alias index="11" field="hoursOfOperation" name=""/>
+        <alias index="12" field="adminDivisions" name=""/>
       </aliases>
       <excludeAttributesWMS/>
       <excludeAttributesWFS/>
@@ -197,6 +206,7 @@
         <default applyOnUpdate="0" field="phoneNumber" expression=""/>
         <default applyOnUpdate="0" field="website" expression=""/>
         <default applyOnUpdate="0" field="hoursOfOperation" expression=""/>
+        <default applyOnUpdate="0" field="adminDivisions" expression=""/>
       </defaults>
       <constraints>
         <constraint constraints="0" field="id" exp_strength="0" unique_strength="0" notnull_strength="0"/>
@@ -211,6 +221,7 @@
         <constraint constraints="0" field="phoneNumber" exp_strength="0" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" field="website" exp_strength="0" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" field="hoursOfOperation" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="adminDivisions" exp_strength="0" unique_strength="0" notnull_strength="0"/>
       </constraints>
       <constraintExpressions>
         <constraint field="id" desc="" exp=""/>
@@ -224,6 +235,7 @@
         <constraint field="postalCode" desc="" exp=""/>
         <constraint field="website" desc="" exp=""/>
         <constraint field="hoursOfOperation" desc="" exp=""/>
+        <constraint field="adminDivisions" desc="" exp=""/>
       </constraintExpressions>
       <expressionfields/>
       <attributeactions>

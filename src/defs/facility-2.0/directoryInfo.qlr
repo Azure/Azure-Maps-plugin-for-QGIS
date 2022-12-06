@@ -1,0 +1,321 @@
+<!DOCTYPE qgis-layer-definition>
+<qlr>
+  <layer-tree-group expanded="1" name="" checked="Qt::Checked">
+    <customproperties/>
+    <layer-tree-layer name="directoryInfo" checked="Qt::Checked" id="directoryInfo_4f3f084c_194f_4a08_9892_b4e98060686e" providerKey="memory" expanded="1" source="NoGeometry?crs=&amp;index=yes&amp;uid={4c38653c-175f-478e-8d56-ae272500c02d}">
+      <customproperties/>
+    </layer-tree-layer>
+  </layer-tree-group>
+  <maplayers>
+    <maplayer minScale="1e+08" autoRefreshTime="0" autoRefreshEnabled="0" type="vector" geometry="No geometry" refreshOnNotifyMessage="" styleCategories="AllStyleCategories" maxScale="0" refreshOnNotifyEnabled="0" hasScaleBasedVisibilityFlag="0" wkbType="NoGeometry" readOnly="0">
+      <id>directoryInfo_f0d85c93_0e9b_44d4_b214_034d6fbb17a2</id>
+      <datasource>memory?geometry=NoGeometry&amp;index=yes&amp;field=id:String(0,0)&amp;field=originalId:String(0,0)&amp;field=name:String(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)&amp;field=streetAddress:String(0,0)&amp;field=unit:String(0,0)&amp;field=locality:String(0,0)&amp;field=postalCode:String(0,0)&amp;field=phoneNumber:String(0,0)&amp;field=website:String(0,0)&amp;field=hoursOfOperation:String(0,0)&amp;field=adminDivisions:string(0,0)[]</datasource>
+      <keywordList>
+        <value></value>
+      </keywordList>
+      <layername>directoryInfo</layername>
+      <srs>
+        <spatialrefsys>
+          <proj4></proj4>
+          <srsid>0</srsid>
+          <srid>0</srid>
+          <authid></authid>
+          <description></description>
+          <projectionacronym></projectionacronym>
+          <ellipsoidacronym></ellipsoidacronym>
+          <geographicflag>false</geographicflag>
+        </spatialrefsys>
+      </srs>
+      <resourceMetadata>
+        <identifier></identifier>
+        <parentidentifier></parentidentifier>
+        <language></language>
+        <type></type>
+        <title></title>
+        <abstract></abstract>
+        <links/>
+        <fees></fees>
+        <encoding></encoding>
+        <crs>
+          <spatialrefsys>
+            <proj4></proj4>
+            <srsid>0</srsid>
+            <srid>0</srid>
+            <authid></authid>
+            <description></description>
+            <projectionacronym></projectionacronym>
+            <ellipsoidacronym></ellipsoidacronym>
+            <geographicflag>false</geographicflag>
+          </spatialrefsys>
+        </crs>
+        <extent/>
+      </resourceMetadata>
+      <provider encoding="System">memory</provider>
+      <vectorjoins/>
+      <layerDependencies/>
+      <dataDependencies/>
+      <legend type="default-vector"/>
+      <expressionfields/>
+      <map-layer-style-manager current="default">
+        <map-layer-style name="default"/>
+      </map-layer-style-manager>
+      <auxiliaryLayer/>
+      <flags>
+        <Identifiable>1</Identifiable>
+        <Removable>1</Removable>
+        <Searchable>1</Searchable>
+      </flags>
+      <customproperties>
+        <property key="dualview/previewExpressions">
+          <value>"name"</value>
+        </property>
+        <property value="0" key="embeddedWidgets/count"/>
+        <property key="variableNames"/>
+        <property key="variableValues"/>
+      </customproperties>
+      <geometryOptions geometryPrecision="0" removeDuplicateNodes="0">
+        <activeChecks type="StringList">
+          <Option type="QString" value=""/>
+        </activeChecks>
+        <checkConfiguration/>
+      </geometryOptions>
+      <fieldConfiguration>
+        <field name="id">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="originalId">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="streetAddress">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="unit">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="locality">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="postalCode">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="name">
+          <editWidget type="TextEdit">
+            <config>
+              <Option type="Map">
+                <Option value="false" name="IsMultiline" type="bool"/>
+                <Option value="false" name="UseHtml" type="bool"/>
+              </Option>
+            </config>
+          </editWidget>
+        </field>
+        <field name="nameSubtitle">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="nameAlt">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="phoneNumber">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="website">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="hoursOfOperation">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="adminDivisions" configurationFlags="None">
+          <editWidget type="">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+      </fieldConfiguration>
+      
+      <aliases>
+        <alias index="0" field="id" name=""/>
+        <alias index="1" field="originalId" name=""/>
+        <alias index="2" field="name" name=""/>
+        <alias index="3" field="nameAlt" name=""/>
+        <alias index="4" field="nameSubtitle" name=""/>
+        <alias index="5" field="streetAddress" name=""/>
+        <alias index="6" field="unit" name=""/>
+        <alias index="7" field="locality" name=""/>
+        <alias index="8" field="postalCode" name=""/>
+        <alias index="9" field="phoneNumber" name=""/>
+        <alias index="10" field="website" name=""/>
+        <alias index="11" field="hoursOfOperation" name=""/>
+        <alias index="12" field="adminDivisions" name=""/>
+      </aliases>
+      <excludeAttributesWMS/>
+      <excludeAttributesWFS/>
+      <defaults>
+        <default applyOnUpdate="0" field="id" expression=""/>
+        <default applyOnUpdate="0" field="originalId" expression=""/>
+        <default applyOnUpdate="0" field="name" expression=""/>
+        <default applyOnUpdate="0" field="nameAlt" expression=""/>
+        <default applyOnUpdate="0" field="nameSubtitle" expression=""/>
+        <default applyOnUpdate="0" field="streetAddress" expression=""/>
+        <default applyOnUpdate="0" field="unit" expression=""/>
+        <default applyOnUpdate="0" field="locality" expression=""/>
+        <default applyOnUpdate="0" field="postalCode" expression=""/>
+        <default applyOnUpdate="0" field="phoneNumber" expression=""/>
+        <default applyOnUpdate="0" field="website" expression=""/>
+        <default applyOnUpdate="0" field="hoursOfOperation" expression=""/>
+        <default applyOnUpdate="0" field="adminDivisions" expression=""/>
+      </defaults>
+      <constraints>
+        <constraint constraints="0" field="id" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="originalId" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="1" field="name" exp_strength="0" unique_strength="0" notnull_strength="1"/>
+        <constraint constraints="0" field="nameAlt" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="nameSubtitle" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="streetAddress" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="unit" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="locality" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="postalCode" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="phoneNumber" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="website" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="hoursOfOperation" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="adminDivisions" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+      </constraints>
+      <constraintExpressions>
+        <constraint field="id" desc="" exp=""/>
+        <constraint field="originalId" desc="" exp=""/>
+        <constraint field="name" desc="" exp=""/>
+        <constraint field="nameAlt" desc="" exp=""/>
+        <constraint field="nameSubtitle" desc="" exp=""/>
+        <constraint field="streetAddress" desc="" exp=""/>
+        <constraint field="unit" desc="" exp=""/>
+        <constraint field="locality" desc="" exp=""/>
+        <constraint field="postalCode" desc="" exp=""/>
+        <constraint field="website" desc="" exp=""/>
+        <constraint field="hoursOfOperation" desc="" exp=""/>
+        <constraint field="adminDivisions" desc="" exp=""/>
+      </constraintExpressions>
+      <expressionfields/>
+      <attributeactions>
+        <defaultAction value="{00000000-0000-0000-0000-000000000000}" key="Canvas"/>
+      </attributeactions>
+      <attributetableconfig sortExpression="" actionWidgetStyle="dropDown" sortOrder="0">
+        <columns>
+          <column hidden="0" name="id" width="-1" type="field"/>
+          <column hidden="0" name="originalId" width="-1" type="field"/>
+          <column hidden="0" name="name" width="-1" type="field"/>
+          <column hidden="0" name="nameAlt" width="-1" type="field"/>
+          <column hidden="0" name="nameSubtitle" width="-1" type="field"/>
+          <column hidden="0" name="streetAddress" width="-1" type="field"/>
+          <column hidden="0" name="unit" width="-1" type="field"/>
+          <column hidden="0" name="locality" width="-1" type="field"/>
+          <column hidden="0" name="postalCode" width="-1" type="field"/>
+          <column hidden="0" name="phoneNumber" width="-1" type="field"/>
+          <column hidden="0" name="website" width="-1" type="field"/>
+          <column hidden="0" name="hoursOfOperation" width="-1" type="field"/>
+          <column hidden="1" width="-1" type="actions"/>
+        </columns>
+      </attributetableconfig>
+      <conditionalstyles>
+        <rowstyles/>
+        <fieldstyles/>
+      </conditionalstyles>
+      <editform tolerant="1"></editform>
+      <editforminit/>
+      <editforminitcodesource>0</editforminitcodesource>
+      <editforminitfilepath></editforminitfilepath>
+      <editforminitcode><![CDATA[# -*- coding: utf-8 -*-
+"""
+QGIS forms can have a Python function that is called when the form is
+opened.
+
+Use this function to add extra logic to your forms.
+
+Enter the name of the function in the "Python Init function"
+field.
+An example follows:
+"""
+from qgis.PyQt.QtWidgets import QWidget
+
+def my_form_open(dialog, layer, feature):
+	geom = feature.geometry()
+	control = dialog.findChild(QWidget, "MyLineEdit")
+]]></editforminitcode>
+      <featformsuppress>0</featformsuppress>
+      <editorlayout>generatedlayout</editorlayout>
+      <editable>
+        <field name="hoursOfOperation" editable="1"/>
+        <field name="id" editable="0"/>
+        <field name="locality" editable="1"/>
+        <field name="name" editable="1"/>
+        <field name="nameAlt" editable="1"/>
+        <field name="nameSubtitle" editable="1"/>
+        <field name="originalId" editable="1"/>
+        <field name="postalCode" editable="1"/>
+        <field name="streetAddress" editable="1"/>
+        <field name="unit" editable="1"/>
+        <field name="phoneNumber" editable="1"/>
+        <field name="website" editable="1"/>
+      </editable>
+      <labelOnTop>
+        <field labelOnTop="0" name="hoursOfOperation"/>
+        <field labelOnTop="0" name="id"/>
+        <field labelOnTop="0" name="locality"/>
+        <field labelOnTop="0" name="name"/>
+        <field labelOnTop="0" name="nameAlt"/>
+        <field labelOnTop="0" name="nameSubtitle"/>
+        <field labelOnTop="0" name="originalId"/>
+        <field labelOnTop="0" name="postalCode"/>
+        <field labelOnTop="0" name="streetAddress"/>
+        <field labelOnTop="0" name="unit"/>
+        <field labelOnTop="0" name="phoneNumber"/>
+        <field labelOnTop="0" name="website"/>
+      </labelOnTop>
+      <widgets/>
+      <previewExpression>name</previewExpression>
+      <mapTip></mapTip>
+    </maplayer>
+  </maplayers>
+</qlr>

@@ -1,8 +1,9 @@
 [general]
 name=Azure Maps
 qgisMinimumVersion=3.8
+qgisMaximumVersion=3.22.5
 description=Provides access to Azure Maps services and data
-version=1.4.5
+version=1.4.7
 author=Microsoft Corporation
 email=japark@microsoft.com, Xubin.Zhuge@microsoft.com
 
@@ -22,7 +23,7 @@ tags=python, WFS, Azure, Azure Maps, private atlas, Creator
 
 homepage=https://azure.microsoft.com/en-us/services/azure-maps/
 category=Vector
-icon=icon.png
+icon=media/icon-circle.png
 # experimental flag
 experimental=True
 

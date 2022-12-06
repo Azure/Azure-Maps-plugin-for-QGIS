@@ -83,22 +83,6 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
         # else:
         # self.adButton.setChecked(True)
 
-        # Environment
-        env = self.plugin_settings.value("environment", "prod")
-        self.envButtons = {
-            "prod": self.prodButton,
-            "stg": self.stgButton,
-            "test": self.testButton,
-            "ci": self.ciButton,
-            "dev": self.localhostButton,
-        }
-        self.envButtons[env].setChecked(True)
-
-        if bool(self.plugin_settings.value("useFrontDoor", True)):
-            self.frontDoorButton.setChecked(True)
-        # else:
-        # self.mdpButton.setChecked(True)
-
     def saveSettings(self):
         # Creator
         self.plugin_settings.setValue("datasetId", self.datasetId.text())
@@ -111,12 +95,6 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
         self.plugin_settings.setValue("sharedKey", self.sharedKey.text())
         # self.plugin_settings.setValue("manualClientId", self.manualClientId.text())
         # self.plugin_settings.setValue("bearerToken", self.bearerToken.toPlainText())
-
-        # Environment
-        for env, button in self.envButtons.items():
-            if button.isChecked():
-                self.plugin_settings.setValue("environment", env)
-        self.plugin_settings.setValue("useFrontDoor", self.frontDoorButton.isChecked())
 
     def on_get_features_clicked(self):
         self.saveSettings()
