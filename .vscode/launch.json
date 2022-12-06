@@ -1,0 +1,21 @@
+{
+    "version": "0.0.1",
+    "configurations": [
+        {
+            "name": "QGIS Python Debugger: Remote Attach",
+            "type": "python",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}/src",
+                    "remoteRoot": "C:/Users/${env:USERNAME}/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins/QGISPlugin"
+                }
+            ],
+            "justMyCode": false,
+        }
+    ]
+}
