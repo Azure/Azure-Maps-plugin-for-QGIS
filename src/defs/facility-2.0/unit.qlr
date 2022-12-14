@@ -2,7 +2,7 @@
 <qlr>
   <layer-tree-group expanded="1" name="" checked="Qt::Checked">
     <customproperties/>
-    <layer-tree-layer id="unit_b5184c56_3037_4eec_912c_003319e974a0" expanded="1" name="unit" source="memory?geometry=Polygon&amp;crs=EPSG:4326&amp;index=yes&amp;field=id:string(0,0)&amp;field=originalId:string(0,0)&amp;field=categoryId:string(0,0)&amp;field=isOpenArea:Boolean(1,0)&amp;field=levelId:string(0,0)&amp;field=addressId:string(0,0)&amp;field=addressRoomNumber:string(0,0)&amp;field=name:string(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)" providerKey="memory" checked="Qt::Checked">
+    <layer-tree-layer id="unit_b5184c56_3037_4eec_912c_003319e974a0" expanded="1" name="unit" source="memory?geometry=Polygon&amp;crs=EPSG:4326&amp;index=yes&amp;field=id:string(0,0)&amp;field=originalId:string(0,0)&amp;field=categoryId:string(0,0)&amp;field=isOpenArea:Boolean(1,0)&amp;field=levelId:string(0,0)&amp;field=addressId:string(0,0)&amp;field=addressRoomNumber:string(0,0)&amp;field=name:string(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)&amp;field=occupants:stringlist(0,0)" providerKey="memory" checked="Qt::Checked">
       <customproperties/>
     </layer-tree-layer>
   </layer-tree-group>
@@ -15,7 +15,7 @@
         <ymax>47.645346850816928</ymax>
       </extent>
       <id>unit_b5184c56_3037_4eec_912c_003319e974a0</id>
-      <datasource>memory?geometry=Polygon&amp;crs=EPSG:4326&amp;index=yes&amp;field=id:string(0,0)&amp;field=originalId:string(0,0)&amp;field=categoryId:string(0,0)&amp;field=isOpenArea:Boolean(1,0)&amp;field=levelId:string(0,0)&amp;field=addressId:string(0,0)&amp;field=addressRoomNumber:string(0,0)&amp;field=name:string(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)</datasource>
+      <datasource>memory?geometry=Polygon&amp;crs=EPSG:4326&amp;index=yes&amp;field=id:string(0,0)&amp;field=originalId:string(0,0)&amp;field=categoryId:string(0,0)&amp;field=isOpenArea:Boolean(1,0)&amp;field=levelId:string(0,0)&amp;field=addressId:string(0,0)&amp;field=addressRoomNumber:string(0,0)&amp;field=name:string(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)&amp;field=occupants:stringlist(0,0)</datasource>
       <keywordList>
         <value></value>
       </keywordList>
@@ -240,6 +240,13 @@
             </config>
           </editWidget>
         </field>
+        <field name="occupants">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
       </fieldConfiguration>
       <aliases>
         <alias field="id" name="" index="0"/>
@@ -252,6 +259,7 @@
         <alias field="name" name="" index="12"/>
         <alias field="nameSubtitle" name="" index="13"/>
         <alias field="nameAlt" name="" index="14"/>
+        <alias field="occupants" name="" index="15"/>
       </aliases>
       <excludeAttributesWMS/>
       <excludeAttributesWFS/>
@@ -266,6 +274,7 @@
         <default applyOnUpdate="0" field="name" expression=""/>
         <default applyOnUpdate="0" field="nameSubtitle" expression=""/>
         <default applyOnUpdate="0" field="nameAlt" expression=""/>
+        <default applyOnUpdate="0" field="occupants" expression=""/>
 
       </defaults>
       <constraints>
@@ -279,6 +288,7 @@
         <constraint notnull_strength="1" field="name" unique_strength="0" exp_strength="0" constraints="1"/>
         <constraint notnull_strength="0" field="nameSubtitle" unique_strength="0" exp_strength="0" constraints="0"/>
         <constraint notnull_strength="0" field="nameAlt" unique_strength="0" exp_strength="0" constraints="0"/>
+        <constraint notnull_strength="0" field="occupants" unique_strength="0" exp_strength="0" constraints="0"/>
       </constraints>
       <constraintExpressions>
         <constraint exp="" field="id" desc=""/>
@@ -291,6 +301,7 @@
         <constraint exp="" field="name" desc=""/>
         <constraint exp="" field="nameSubtitle" desc=""/>
         <constraint exp="" field="nameAlt" desc=""/>
+        <constraint exp="" field="occupants" desc=""/>
       </constraintExpressions>
       <expressionfields/>
       <attributeactions>
@@ -308,6 +319,7 @@
           <column type="field" name="name" hidden="0" width="-1"/>
           <column type="field" name="nameSubtitle" hidden="0" width="-1"/>
           <column type="field" name="nameAlt" hidden="0" width="-1"/>
+          <column type="field" name="occupants" hidden="0" width="-1"/>
           <column type="actions" hidden="1" width="-1"/>
         </columns>
       </attributetableconfig>
@@ -349,6 +361,7 @@ def my_form_open(dialog, layer, feature):
         <field editable="1" name="nameAlt"/>
         <field editable="1" name="nameSubtitle"/>
         <field editable="1" name="originalId"/>
+        <field editable="1" name="occupants"/>
       </editable>
       <labelOnTop/>
       <widgets/>
