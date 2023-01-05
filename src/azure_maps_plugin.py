@@ -101,11 +101,12 @@ class AzureMapsPlugin:
         self.areAllFieldsValid = True
         self.base_group = None
         self._progress_base = None
+        self.apiName = Const.FEATURES
+        self.apiVersion = Const.API_VERSIONS.V20220901PREVIEW
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
         """Get the translation for a string using Qt translation API.
-
         We implement this ourselves since we do not inherit QObject.
 
         :param message: String for translation.
@@ -116,7 +117,7 @@ class AzureMapsPlugin:
         """
         win = QWidget()
         l1 = QLabel()
-        l1.setPixmap(QPixmap(":/plugins/azure_maps/media/icon-circle.png"))
+        l1.setPixmap(QPixmap(Const.Paths.PLUGIN_CIRCLE_ICON))
 
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate("AzureMapsPlugin", message)
@@ -199,13 +200,13 @@ class AzureMapsPlugin:
         # Add the plugin icon on the Plugin Toolbar
         config_path = (
             QgsApplication.qgisSettingsDirPath().replace("\\", "/")
-            + Const.RELATIVE_CONFIG_PATH
+            + Const.Paths.RELATIVE_CONFIG_PATH
         )
         plugin_settings = QSettings(config_path, QSettings.IniFormat)
-        icon_path = ":/plugins/azure_maps/media/icon-circle.png"
+        icon_path = Const.Paths.PLUGIN_CIRCLE_ICON
         self.add_action(
             icon_path,
-            text=self.tr(u"Azure Maps"),
+            text=self.tr(Const.AZURE_MAPS),
             callback=self.run,
             parent=self.iface.mainWindow(),
         )
@@ -224,7 +225,7 @@ class AzureMapsPlugin:
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
-            self.iface.removePluginVectorMenu(self.tr(u"Azure Maps"), action)
+            self.iface.removePluginVectorMenu(self.tr(Const.AZURE_MAPS), action)
             self.iface.removeToolBarIcon(action)
 
         # Delete toolbar level picker on plugin unload
@@ -346,12 +347,14 @@ class AzureMapsPlugin:
         self.current_dataset_id = dataset_id
 
         # Determine host name
-        if str(self.dlg.geographyDropdown.currentText()) == "United States":
-            host = "https://us.atlas.microsoft.com"
-        elif str(self.dlg.geographyDropdown.currentText()) == "Europe":
-            host = "https://eu.atlas.microsoft.com"
+        if str(self.dlg.geographyDropdown.currentText()) == Const.Geo.US:
+            host = Const.Host.US
+        elif str(self.dlg.geographyDropdown.currentText()) == Const.Geo.EU:
+            host = Const.Host.EU
+        elif str(self.dlg.geographyDropdown.currentText()) == Const.Geo.TEST:
+            host = Const.Host.US_TEST
         else:
-            host = "https://atlas.microsoft.com"
+            host = Const.Host.DEFAULT
 
         # Determine bounding box.
         bbox = ""
@@ -390,15 +393,15 @@ class AzureMapsPlugin:
         QApplication.processEvents()
 
         # Get dataset metadata.
-        self.wfs_url = host + "/wfs/datasets/" + dataset_id + "/"
-        self.query_string = "?" + urllib.parse.urlencode({"api-version": "2.0"})
+        self.features_url = Const.API_Paths.BASE.format(host=host, apiName=self.apiName, datasetId=dataset_id)
+        self.query_string = "?" + urllib.parse.urlencode({"api-version": self.apiVersion})
 
         if self.dlg.skButton.isChecked():
             self.query_string += "&" + urllib.parse.urlencode(
                 {"subscription-key": self.dlg.sharedKey.text()}
             )
 
-        r = self.get_url(self.wfs_url + "collections" + self.query_string)
+        r = self.get_url(Const.API_Paths.GET_COLLECTIONS.format(base=self.features_url) + self.query_string)
 
         if r is None:
             self._apply_progress_error_message(
@@ -455,10 +458,10 @@ class AzureMapsPlugin:
         collection_order = Collection.get_order(self.ontology)
 
         other_collections = [
-            c["name"] for c in collections if c["name"] not in collection_order
+            c["id"] for c in collections if c["id"] not in collection_order
         ]
         # ! List must be updated if more enums will be exposed in other collections !
-        enums_collection = ["category", "verticalPenetration", "opening"]
+        enums_collection = [Const.COLLECTIONS.CTG, Const.COLLECTIONS.VRT, Const.COLLECTIONS.OPN]
 
         progress_max = (
             len(collection_order) + len(other_collections) + len(enums_collection) + 2
@@ -476,10 +479,11 @@ class AzureMapsPlugin:
 
         # Construct Enum List
         enums_set = set()
-        for name in enums_collection:
-            progress.next("Parsing " + name + " definition")
+        for collectionId in enums_collection:
+            progress.next("Parsing " + collectionId + " definition")
             r = self.get_url(
-                self.wfs_url + "collections/" + name + "/definition" + self.query_string
+                Const.API_Paths.GET_COLLECTION_DEF.format(base=self.features_url, collectionId=collectionId)
+                + self.query_string
             )
 
             if r is None:
@@ -539,13 +543,13 @@ class AzureMapsPlugin:
             opening_layer = lineElement_layer = pointElement_layer = facility_layer = verticalPenetration_layer = \
             zone_layer = None
 
-        for name in collection_order + other_collections:
+        for _id in collection_order + other_collections:
             # Find collection in API definition.
-            collection = next(c for c in collections if c["name"] == name)
+            collection = next(c for c in collections if c["id"] == _id)
             links = collection["links"]
 
             # Get link to item data for collection.
-            data_link = next(link for link in links if link["rel"] == "data")
+            data_link = next(link for link in links if link["rel"] == "items")
 
             # Get link to metadata for collection.
             meta_link = next(link for link in links if link["rel"] == "describedBy")
@@ -579,14 +583,14 @@ class AzureMapsPlugin:
             names = []
             for attrs in properties:
                 names.append(attrs["name"])
-            self.schema_map[name] = names
+            self.schema_map[_id] = names
 
-            collection_meta[name] = response
+            collection_meta[_id] = response
 
             # Get collection items.
             href = self.patch(data_link["href"])
             layer = self.load_items(
-                name, href + bbox, self.base_group, id_map, progress
+                _id, href + bbox, self.base_group, id_map, progress
             )
             if layer is None:
                 self.base_group.removeAllChildren()
@@ -599,30 +603,31 @@ class AzureMapsPlugin:
                 self._getFeaturesButton_setEnabled(True)
                 return
 
-            if name == "level":
+            if _id == Const.COLLECTIONS.LVL:
                 level_layer = layer
-            elif name == "category":
+            elif _id == Const.COLLECTIONS.CTG:
                 category_layer = layer
-            elif name == "directoryInfo":
+            elif _id == Const.COLLECTIONS.DIR:
                 directoryInfo_layer = layer
-            elif name == "unit":
+            elif _id == Const.COLLECTIONS.UNIT:
                 unit_layer = layer
-            elif name == "areaElement":
+            elif _id == Const.COLLECTIONS.AEL:
                 areaElement_layer = layer
-            elif name == "structure":
+            elif _id == Const.COLLECTIONS.STR:
                 structure_layer = layer
-            elif name == "opening":
+            elif _id == Const.COLLECTIONS.OPN:
                 opening_layer = layer
-            elif name == "lineElement":
+            elif _id == Const.COLLECTIONS.LEL:
                 lineElement_layer = layer
-            elif name == "pointElement":
+            elif _id == Const.COLLECTIONS.PEL:
                 pointElement_layer = layer
-            elif name == "facility":
+            elif _id == Const.COLLECTIONS.FCL:
                 facility_layer = layer
-            elif name == "verticalPenetration":
+            elif _id == Const.COLLECTIONS.VRT:
                 verticalPenetration_layer = layer
-            elif name == "zone":
+            elif _id == Const.COLLECTIONS.ZONE:
                 zone_layer = layer
+        
         if level_layer is None or len(level_layer) == 0 or unit_layer is None:
             self.msgBar.pushMessage(
                 "Error",
@@ -975,7 +980,7 @@ class AzureMapsPlugin:
             return
 
         # Set canvas CRS to WGS84 Pseudo-Mercator
-        canvas_crs = QgsCoordinateReferenceSystem("EPSG:3857")
+        canvas_crs = QgsCoordinateReferenceSystem(Const.CRS_WGS84)
         self.iface.mapCanvas().setDestinationCrs(canvas_crs)
 
         self._getFeaturesButton_setEnabled(True)
@@ -1057,11 +1062,15 @@ class AzureMapsPlugin:
         layer.updatedFields.connect(lambda: self.on_fields_changed(layer))
 
     def patch(self, url):
-        if str(self.dlg.geographyDropdown.currentText()) == "United States":
+        if str(self.dlg.geographyDropdown.currentText()) == Const.Geo.US:
             url = url.replace("//atlas.microsoft.com", "//us.atlas.microsoft.com")
-        elif str(self.dlg.geographyDropdown.currentText()) == "Europe":
+        elif str(self.dlg.geographyDropdown.currentText()) == Const.Geo.EU:
             url = url.replace("//atlas.microsoft.com", "//eu.atlas.microsoft.com")
+        elif str(self.dlg.geographyDropdown.currentText()) == Const.Geo.TEST:
+            url = url.replace("//atlas.microsoft.com", "//us.t-azmaps.azurelbs.com")
 
+        queryStart = "&" if "?" in url else "?"
+        url += queryStart + urllib.parse.urlencode({"api-version": self.apiVersion})
         if self.dlg.skButton.isChecked():
             url += "&" + urllib.parse.urlencode(
                 {"subscription-key": self.dlg.sharedKey.text()}
@@ -1146,10 +1155,11 @@ class AzureMapsPlugin:
                         wkt + "?crs=" + crs + "&index=yes", name, "memory"
                     )
                 # Add fields to layer - if API returns more attributes than qlr definition
+                    
                 layer.dataProvider().addAttributes(
                     new_layer.dataProvider().fields().toList()
                 )
-
+                
                 QgsProject.instance().addMapLayer(layer, False)
                 group.addLayer(layer)
                 layer.updateFields()
@@ -1460,13 +1470,16 @@ class AzureMapsPlugin:
         )
 
         # Call Azure Maps patch service to update layer.
-        url = self.wfs_url
+        url = self.features_url
+        # Replacing Features with WFS to make it work with WFS Patch
+        # TODO: Remove this once WFS Patch switched to Features
+        url = url.replace(Const.FEATURES, Const.WFS)
 
         # Use message box to alert user of success or failure
 
         try:
             r = requests.patch(
-                url + "collections/" + layer.name() + self.query_string,
+                url + "/collections/" + layer.name() + self.query_string.replace(Const.API_VERSIONS.V20220901PREVIEW, Const.API_VERSIONS.V20),
                 data=data,
                 headers={"content-type": "application/geo+json"},
                 timeout=30,

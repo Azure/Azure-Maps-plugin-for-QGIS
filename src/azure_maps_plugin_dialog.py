@@ -63,7 +63,7 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
 
         config_path = (
             QgsApplication.qgisSettingsDirPath().replace("\\", "/")
-            + Const.RELATIVE_CONFIG_PATH
+            + Const.Paths.RELATIVE_CONFIG_PATH
         )
         self.plugin_settings = QSettings(config_path, QSettings.IniFormat)
 
