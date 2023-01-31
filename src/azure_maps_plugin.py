@@ -30,7 +30,7 @@ from qgis.core import *
 # Initialize Qt resources from file resources.py
 from QGISPlugin.models.Collection import Collection
 from QGISPlugin.models.Ontology import Ontology
-from .Const import Const
+from .Constants import Constants
 from .resources import *
 
 # Import the code for the dialog
@@ -47,6 +47,7 @@ import requests
 import time
 import urllib.parse
 import json
+from copy import deepcopy
 
 
 class AzureMapsPlugin:
@@ -101,8 +102,8 @@ class AzureMapsPlugin:
         self.areAllFieldsValid = True
         self.base_group = None
         self._progress_base = None
-        self.apiName = Const.FEATURES
-        self.apiVersion = Const.API_VERSIONS.V20220901PREVIEW
+        self.apiName = Constants.FEATURES
+        self.apiVersion = Constants.API_Versions.V20220901PREVIEW
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -117,7 +118,7 @@ class AzureMapsPlugin:
         """
         win = QWidget()
         l1 = QLabel()
-        l1.setPixmap(QPixmap(Const.Paths.PLUGIN_CIRCLE_ICON))
+        l1.setPixmap(QPixmap(Constants.Paths.PLUGIN_CIRCLE_ICON))
 
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate("AzureMapsPlugin", message)
@@ -200,13 +201,13 @@ class AzureMapsPlugin:
         # Add the plugin icon on the Plugin Toolbar
         config_path = (
             QgsApplication.qgisSettingsDirPath().replace("\\", "/")
-            + Const.Paths.RELATIVE_CONFIG_PATH
+            + Constants.Paths.RELATIVE_CONFIG_PATH
         )
         plugin_settings = QSettings(config_path, QSettings.IniFormat)
-        icon_path = Const.Paths.PLUGIN_CIRCLE_ICON
+        icon_path = Constants.Paths.PLUGIN_CIRCLE_ICON
         self.add_action(
             icon_path,
-            text=self.tr(Const.AZURE_MAPS),
+            text=self.tr(Constants.AZURE_MAPS),
             callback=self.run,
             parent=self.iface.mainWindow(),
         )
@@ -225,7 +226,7 @@ class AzureMapsPlugin:
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
-            self.iface.removePluginVectorMenu(self.tr(Const.AZURE_MAPS), action)
+            self.iface.removePluginVectorMenu(self.tr(Constants.AZURE_MAPS), action)
             self.iface.removeToolBarIcon(action)
 
         # Delete toolbar level picker on plugin unload
@@ -347,14 +348,14 @@ class AzureMapsPlugin:
         self.current_dataset_id = dataset_id
 
         # Determine host name
-        if str(self.dlg.geographyDropdown.currentText()) == Const.Geo.US:
-            host = Const.Host.US
-        elif str(self.dlg.geographyDropdown.currentText()) == Const.Geo.EU:
-            host = Const.Host.EU
-        elif str(self.dlg.geographyDropdown.currentText()) == Const.Geo.TEST:
-            host = Const.Host.US_TEST
+        if str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.US:
+            host = Constants.Host.US
+        elif str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.EU:
+            host = Constants.Host.EU
+        elif str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.TEST:
+            host = Constants.Host.US_TEST
         else:
-            host = Const.Host.DEFAULT
+            host = Constants.Host.DEFAULT
 
         # Determine bounding box.
         bbox = ""
@@ -393,7 +394,7 @@ class AzureMapsPlugin:
         QApplication.processEvents()
 
         # Get dataset metadata.
-        self.features_url = Const.API_Paths.BASE.format(host=host, apiName=self.apiName, datasetId=dataset_id)
+        self.features_url = Constants.API_Paths.BASE.format(host=host, apiName=self.apiName, datasetId=dataset_id)
         self.query_string = "?" + urllib.parse.urlencode({"api-version": self.apiVersion})
 
         if self.dlg.skButton.isChecked():
@@ -401,7 +402,7 @@ class AzureMapsPlugin:
                 {"subscription-key": self.dlg.sharedKey.text()}
             )
 
-        r = self.get_url(Const.API_Paths.GET_COLLECTIONS.format(base=self.features_url) + self.query_string)
+        r = self.get_url(Constants.API_Paths.GET_COLLECTIONS.format(base=self.features_url) + self.query_string)
 
         if r is None:
             self._apply_progress_error_message(
@@ -461,7 +462,7 @@ class AzureMapsPlugin:
             c["id"] for c in collections if c["id"] not in collection_order
         ]
         # ! List must be updated if more enums will be exposed in other collections !
-        enums_collection = [Const.COLLECTIONS.CTG, Const.COLLECTIONS.VRT, Const.COLLECTIONS.OPN]
+        enums_collection = [Constants.COLLECTIONS.CTG, Constants.COLLECTIONS.VRT, Constants.COLLECTIONS.OPN]
 
         progress_max = (
             len(collection_order) + len(other_collections) + len(enums_collection) + 2
@@ -482,7 +483,7 @@ class AzureMapsPlugin:
         for collectionId in enums_collection:
             progress.next("Parsing " + collectionId + " definition")
             r = self.get_url(
-                Const.API_Paths.GET_COLLECTION_DEF.format(base=self.features_url, collectionId=collectionId)
+                Constants.API_Paths.GET_COLLECTION_DEF.format(base=self.features_url, collectionId=collectionId)
                 + self.query_string
             )
 
@@ -603,29 +604,29 @@ class AzureMapsPlugin:
                 self._getFeaturesButton_setEnabled(True)
                 return
 
-            if _id == Const.COLLECTIONS.LVL:
+            if _id == Constants.COLLECTIONS.LVL:
                 level_layer = layer
-            elif _id == Const.COLLECTIONS.CTG:
+            elif _id == Constants.COLLECTIONS.CTG:
                 category_layer = layer
-            elif _id == Const.COLLECTIONS.DIR:
+            elif _id == Constants.COLLECTIONS.DIR:
                 directoryInfo_layer = layer
-            elif _id == Const.COLLECTIONS.UNIT:
+            elif _id == Constants.COLLECTIONS.UNIT:
                 unit_layer = layer
-            elif _id == Const.COLLECTIONS.AEL:
+            elif _id == Constants.COLLECTIONS.AEL:
                 areaElement_layer = layer
-            elif _id == Const.COLLECTIONS.STR:
+            elif _id == Constants.COLLECTIONS.STR:
                 structure_layer = layer
-            elif _id == Const.COLLECTIONS.OPN:
+            elif _id == Constants.COLLECTIONS.OPN:
                 opening_layer = layer
-            elif _id == Const.COLLECTIONS.LEL:
+            elif _id == Constants.COLLECTIONS.LEL:
                 lineElement_layer = layer
-            elif _id == Const.COLLECTIONS.PEL:
+            elif _id == Constants.COLLECTIONS.PEL:
                 pointElement_layer = layer
-            elif _id == Const.COLLECTIONS.FCL:
+            elif _id == Constants.COLLECTIONS.FCL:
                 facility_layer = layer
-            elif _id == Const.COLLECTIONS.VRT:
+            elif _id == Constants.COLLECTIONS.VRT:
                 verticalPenetration_layer = layer
-            elif _id == Const.COLLECTIONS.ZONE:
+            elif _id == Constants.COLLECTIONS.ZONE:
                 zone_layer = layer
         
         if level_layer is None or len(level_layer) == 0 or unit_layer is None:
@@ -756,6 +757,7 @@ class AzureMapsPlugin:
             self.space_to_floors[feature["id"]] = floor
             space_to_ordinals[feature["id"]] = ordinal
         self.add_layer_events(unit_layer, id_map, collection_meta)
+        print('Unit Layer')
 
         # Structure layer
         if structure_layer is not None:
@@ -980,7 +982,7 @@ class AzureMapsPlugin:
             return
 
         # Set canvas CRS to WGS84 Pseudo-Mercator
-        canvas_crs = QgsCoordinateReferenceSystem(Const.CRS_WGS84)
+        canvas_crs = QgsCoordinateReferenceSystem(Constants.CRS_WGS84)
         self.iface.mapCanvas().setDestinationCrs(canvas_crs)
 
         self._getFeaturesButton_setEnabled(True)
@@ -1062,11 +1064,11 @@ class AzureMapsPlugin:
         layer.updatedFields.connect(lambda: self.on_fields_changed(layer))
 
     def patch(self, url):
-        if str(self.dlg.geographyDropdown.currentText()) == Const.Geo.US:
+        if str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.US:
             url = url.replace("//atlas.microsoft.com", "//us.atlas.microsoft.com")
-        elif str(self.dlg.geographyDropdown.currentText()) == Const.Geo.EU:
+        elif str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.EU:
             url = url.replace("//atlas.microsoft.com", "//eu.atlas.microsoft.com")
-        elif str(self.dlg.geographyDropdown.currentText()) == Const.Geo.TEST:
+        elif str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.TEST:
             url = url.replace("//atlas.microsoft.com", "//us.t-azmaps.azurelbs.com")
 
         queryStart = "&" if "?" in url else "?"
@@ -1374,6 +1376,20 @@ class AzureMapsPlugin:
                 id_map[layer.name() + ":" + str(feature.id())] = feature["id"]
         self.new_feature_list = []
 
+    """
+    Handles Changes. Hit when the save button is clicked on Attribute table
+        1. Gathers Edits, Deletes and Creates.
+        2. Loops through each, serially, and calls respective Features API. 
+            Logs each request under "Logs" table
+        3. Outputs error message of all unsuccessful requests at the end
+    Note: 
+        1. Doesn't stop if a request is not successful. Moves on to the next request.
+        2. All requests are independent of each other and can occur in any order.
+            This is because saving can only happen in one feature class at a time, due to QGIS restrictions
+        3. Used PUT in case of Patch as well, since QGIS returns the full feature, and not just the edited parts.
+    """
+    # TODO: Ensure uncommited changes (changes which return an error) are reverted/removed from the buffer
+    # TODO: Handle Errors on the front-end with dialog box.
     def on_before_commit_changes(self, layer, id_map):
         if len(self.areFieldsValid) > 0:
             self.areAllFieldsValid = True
@@ -1392,13 +1408,13 @@ class AzureMapsPlugin:
             msg.exec()
             return
 
+        # Gets all changes
         edits = layer.editBuffer()
         deletes = edits.deletedFeatureIds()
         adds = edits.addedFeatures()
 
         # Determined changed features.
         changes = set()
-
         for fid in edits.changedGeometries():
             changes.add(fid)
         for fid in edits.changedAttributeValues():
@@ -1408,149 +1424,97 @@ class AzureMapsPlugin:
 
         exporter = QgsJsonExporter(layer, 7)
         if len(changes) != 0 or len(adds) != 0:
-            fid = 0
-            feature = None
-            if len(changes) != 0:
-                for f in changes:
-                    fid = f
-                    break
+            if len(changes)!=0:
+                fid = next(iter(changes)) # Get the first change, if exists
             else:
-                for f in adds:
-                    fid = f
-                    break
+                fid = next(iter(adds)) # Otherwise get the first add.
             feature = layer.getFeature(fid)
-            includedList = []
             attributeList = self.schema_map[layer.name()]
+            includedList = []
             for attr in attributeList:
                 index = feature.fieldNameIndex(attr)
                 if index != -1:
                     includedList.append(index)
             exporter.setAttributes(includedList)
-        features = []
+
+
+        # ----------- #
+        # Getting all features based on the IDs
+        addFeatures, changeFeatures, deleteFeatures = [], [], []
 
         for fid in adds:
+            self.update_ids(layer, layer.getFeature(fid))
             feature = layer.getFeature(fid)
-            self.update_ids(layer, feature)
-            feature = layer.getFeature(fid)
-            qgis_str = (
-                '{"action":"create",' + exporter.exportFeature(feature, {}, fid)[1:]
-            )
-            features.append(self._qgis_values_resolver(qgis_str))
+            body_str = exporter.exportFeature(feature, {}, fid)
+            addFeatures.append((fid,body_str))
 
         for fid in changes:
-            feature = layer.getFeature(fid)
-            self.update_ids(layer, feature)
+            self.update_ids(layer, layer.getFeature(fid))
             feature = layer.getFeature(fid)
             key = layer.name() + ":" + str(fid)
-            if fid > 0 and key in id_map:
-                wid = id_map[key]
-                qgis_str = (
-                    '{"action":"update",' + exporter.exportFeature(feature, {}, wid)[1:]
-                )
-            else:
-                adds[fid] = None
-                qgis_str = (
-                    '{"action":"create",' + exporter.exportFeature(feature, {}, fid)[1:]
-                )
-            features.append(self._qgis_values_resolver(qgis_str))
+
+            # If ID is a change, take that ID, else take the newly added id
+            if fid > 0 and key in id_map: 
+                temp_id = id_map[key]
+            else: 
+                temp_id = fid
+                adds[fid] = None # Remove ID from adds, to not double count, if the change is an add
+            featureJson = json.loads(exporter.exportFeature(feature, {}, temp_id))
+            featureJson.pop("bbox", None) # Remove bbox property, to not cause unexpected issues in service later
+            changeFeatures.append((temp_id, json.dumps(featureJson)))
 
         for fid in deletes:
             wid = id_map[layer.name() + ":" + str(fid)]
-            features.append(
-                '{"type":"Feature","action":"delete","id":"'
-                + wid
-                + '","geometry": null,"properties": null}'
-            )
+            deleteFeatures.append(wid)
 
-        # Submit the changes to the server.
-        data = (
-            '{"type": "FeatureCollection","features":['
-            + str.join(", ", features)
-            + "]}"
-        )
 
-        # Call Azure Maps patch service to update layer.
-        url = self.features_url
-        # Replacing Features with WFS to make it work with WFS Patch
-        # TODO: Remove this once WFS Patch switched to Features
-        url = url.replace(Const.FEATURES, Const.WFS)
+        # ----------- #
+        # Looping through all features, sending requests and recording failures
+        failAdd, successAdd = [], []
+        failChanges, successChanges = [], []
+        failDeletes, successDeletes = [], []
 
-        # Use message box to alert user of success or failure
+        # Looping through all add features
+        for featureId, body_str in addFeatures:
+            commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=layer.name()) + self.query_string
+            resp = self._handle_commit(Constants.HTTPS.Methods.POST, commit_url, body_str)
+            if resp["success"]: successAdd.append((featureId, resp))
+            else: failAdd.append((featureId, resp))
+        
+        # Looping through all changed features
+        for featureId, body_str in changeFeatures:
+            commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
+            resp = self._handle_commit(Constants.HTTPS.Methods.PUT, commit_url, body_str)
+            if resp["success"]: successChanges.append((featureId, resp))
+            else: failChanges.append((featureId, resp))
 
-        try:
-            r = requests.patch(
-                url + "/collections/" + layer.name() + self.query_string.replace(Const.API_VERSIONS.V20220901PREVIEW, Const.API_VERSIONS.V20),
-                data=data,
-                headers={"content-type": "application/geo+json"},
-                timeout=30,
-                verify=True,
-            )
-        except requests.exceptions.RequestException as err:
-            QgsMessageLog.logMessage(
-                "Exception (Timeout, ConnectionError, etc.) occurred while sending patch request.",
-                "Patch Request",
-                Qgis.Critical,
-            )
+        # Looping through all deleted features
+        for featureId in deleteFeatures:
+            commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
+            resp = self._handle_commit(Constants.HTTPS.Methods.DELETE, commit_url)
+            if resp["success"]: successDeletes.append((featureId, resp))
+            else: failDeletes.append((featureId, resp))
+
+        # If any errors, display all of them appropriately
+        if (len(failAdd)+len(failDeletes)+len(failChanges)>0):
+            error_list = ["Add Failed. Feature id: {}. Details: {}".format(featureId, resp["error_text"]) for (featureId, resp) in failAdd] + \
+                        ["Edit Failed. Feature id: {}. Details: {}".format(featureId, resp["error_text"]) for (featureId, resp) in failChanges] + \
+                        ["Delete Failed. Feature id: {}. Details: {}".format(featureId, resp["error_text"]) for (featureId, resp) in failDeletes]
             msg = self.QMessageBox(
-                QMessageBox.Critical,
-                "Save Failed!",
-                "Save to " + layer.name() + " layer has failed!",
-                informativeText="Edits, deletes or creates have not been saved to your database.\n"
-                + "Please try again later.",
-                detailedText="Exception (Timeout, ConnectionError, etc.) occurred while sending patch request.",
-            )
-            msg.exec()
-            return
-        except:
-            QgsMessageLog.logMessage(
-                "Unexpected exception occurred while sending patch request.",
-                "Patch Request",
-                Qgis.Critical,
-            )
-            msg = self.QMessageBox(
-                QMessageBox.Critical,
-                "Save Failed!",
-                "Save to " + layer.name() + " layer has failed!",
-                informativeText="Edits, deletes or creates have not been saved to your database.\n"
-                + "Please try again later.",
-                detailedText="Unexpected exception occurred while sending patch request.",
-            )
+                    icon = QMessageBox.Critical,
+                    title = "Save Failed!",
+                    text = "Your saves to " + layer.name() + " layer has failed!",
+                    informativeText = "Edits, deletes or creates have not been saved to your database.\nPlease fix the issues and try saving again.",
+                    detailedText = '\n'.join(error_list)
+                )
             msg.exec()
             return
 
-        QgsMessageLog.logMessage("Body: " + r.request.body, "Patch Request", Qgis.Info)
-        QgsMessageLog.logMessage("URL: " + r.request.url, "Patch Request", Qgis.Info)
-        QgsMessageLog.logMessage(
-            "Status Code: " + str(r.status_code), "Patch Request", Qgis.Info
-        )
-
-        if r.status_code != 200:
-            QgsMessageLog.logMessage(
-                r.json()["error"]["message"], "Patch Request", Qgis.Critical
-            )
-            msg = self.QMessageBox(
-                QMessageBox.Critical,
-                "Save Failed!",
-                "Save to " + layer.name() + " layer has failed!",
-                detailedText="Error message from Azure Maps: "
-                + r.json()["error"]["message"],
-                informativeText="Edits, deletes or creates have not been saved to your database.\n"
-                + "Please fix the issues and try saving again.",
-            )
-            msg.exec()
-            return
-        else:
-            msg = self.QMessageBox(
-                QMessageBox.Information,
-                "Save Successful!",
-                "Save to " + layer.name() + " layer has succeeded!",
-                informativeText="Your edits have been saved to the database.",
-            )
-            msg.exec()
         floor_index = layer.dataProvider().fieldNameIndex("floor")
         created = None
         if adds is not None and len(adds) != 0:
             created = r.json()["createdfeatures"]
+        # TODO: This doesn't work - handle with reverting changes task
         # If floor attribute is found, update floor to updated or created value
 
         if floor_index != -1:
@@ -1584,6 +1548,75 @@ class AzureMapsPlugin:
 
         # (if modified) Update the layer group name w/ updated facility layer
         self._update_layer_group_name(layer)
+
+    """
+    Send request, handle exceptions, handle responses - for PUT, Create, Delete
+    """
+    def _handle_commit(self, commit_type, commit_url, body=None):
+        self.InfoLog("{}\t{}".format(commit_type, commit_url))
+        # Make the request
+        try:
+            if commit_type==Constants.HTTPS.Methods.POST:
+                headers = {"content-type": Constants.HTTPS.Content_type.GEOJSON}
+                r = requests.post(
+                    commit_url,
+                    data=body,
+                    headers=headers,
+                    timeout=30,
+                    verify=True,
+                )
+            elif commit_type==Constants.HTTPS.Methods.PUT:
+                headers = {"content-type": Constants.HTTPS.Content_type.GEOJSON}
+                r = requests.put(
+                    commit_url,
+                    data=body,
+                    headers=headers,
+                    timeout=30,
+                    verify=True,
+                )
+            elif commit_type==Constants.HTTPS.Methods.DELETE:
+                r = requests.delete(
+                    commit_url,
+                    timeout=30,
+                    verify=True,
+                )
+            else:
+                raise Exception("") # TODO: Fix this
+        # Handle exceptions
+        except requests.exceptions.RequestException as err:
+            error_text = "Exception occurred while sending {} request.".format(commit_type)
+            self.CritLog("{}\t{}".format("Failed", error_text))
+            return {
+                "success": False,
+                "error_text": error_text,
+                "response": None
+            }
+        except:
+            error_text = "Unexpected exception occurred while sending {} request.".format(commit_type)
+            self.CritLog("{}\t{}".format("Failed", error_text))
+            return {
+                "success": False,
+                "error_text": error_text,
+                "response": None
+            }
+
+        # If reponse gives error 
+        if r.status_code not in [201, 204]:
+            error_text = r.json()["error"]["message"]
+            self.CritLog("{}\t{}".format(r.status_code, error_text))
+            return {
+                "success": False,
+                "error_text": error_text,
+                "response": r
+            }
+        else:
+            # Success!
+            self.InfoLog("{}\t{}".format(r.status_code, "Sucess"))
+            return {
+                "success": True,
+                "error_text": None,
+                "response": r
+            }
 
     # Update background facilityId, categoryId, levelId, addressId based on the value in selected box
     def update_ids(self, layer, feature):
@@ -1739,13 +1772,19 @@ class AzureMapsPlugin:
         self.dlg.getFeaturesButton.setEnabled(boolean)
         self.dlg.getFeaturesButton_2.setEnabled(boolean)
 
-    def apply_url(self, url, verb, method):
-        # print(verb + " " + url)
-        start = time.time()
-        headers = {}
+    # TODO: Cleanup apply_url 
+    def apply_url(self, url, request_type, body=None, content_type=None):
+        if(request_type == Constants.HTTPS.Methods.GET): method = requests.get
+        elif(request_type == Constants.HTTPS.Methods.POST): method = requests.post
+        elif(request_type == Constants.HTTPS.Methods.PUT): method = requests.put
+        elif(request_type == Constants.HTTPS.Methods.DELETE): method = requests.delete
+        elif(request_type == Constants.HTTPS.Methods.PATCH): method = requests.patch
+
+        headers = {"content-type": content_type} if content_type else {}
+        self.InfoLog("{}\t{}".format(request_type, url))
 
         try:
-            r = method(url, headers=headers, timeout=30, verify=True)
+            r = method(url, data=body, headers=headers, timeout=30, verify=True)
             # print("{}: {}".format(r.status_code, time.time() - start))
 
             if "atlas.azure-api.net" in r.text:
@@ -1784,10 +1823,7 @@ class AzureMapsPlugin:
         return None
 
     def get_url(self, url):
-        return self.apply_url(url, "GET", requests.get)
-
-    def delete_url(self, url):
-        return self.apply_url(url, "DELETE", requests.delete)
+        return self.apply_url(url, Constants.HTTPS.Methods.GET)
 
     def hideGroup(self, group):
         if isinstance(group, QgsLayerTreeGroup):
@@ -1885,6 +1921,21 @@ class AzureMapsPlugin:
         layout.addItem(spacer, layout.rowCount(), 0, 1, layout.columnCount())
 
         return message_box
+
+    """Logging Method"""
+    def QLog(self, log_text, level, tag="Logs"):
+        if type(log_text) == dict: log_text = json.dumps(log_text)
+        QgsMessageLog.logMessage(
+                log_text,
+                tag,
+                level,
+            )
+    
+    """Informational Category Logs"""
+    def InfoLog(self, log_text): self.QLog(log_text, Qgis.Info)
+
+    """Critical Category Logs"""
+    def CritLog(self, log_text): self.QLog(log_text, Qgis.Critical)
 
 
 def get_depth(collection_name, references):

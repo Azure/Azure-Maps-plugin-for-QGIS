@@ -1,10 +1,10 @@
 from .models.Facility_2 import Facility_2
-class Const(Facility_2):
+class Constants(Facility_2):
     class Paths:
         RELATIVE_CONFIG_PATH = "python/plugins/QGISPlugin/plugin-config.ini"
         PLUGIN_CIRCLE_ICON = ":/plugins/azure_maps/media/icon-circle.png"
 
-    class Geo:
+    class Geography:
         US = "United States"
         EU = "Europe"
         TEST = "Test"
@@ -30,13 +30,18 @@ class Const(Facility_2):
         PUT = "{base}/collections/{collectionId}/items/{featureId}"
 
     class HTTPS:
-        PUT = "PUT"
-        PATCH = "PATCH"
-        GET = "GET"
-        POST = "POST"
-        DELETE = "DELETE"
+        class Methods:
+            PUT = "PUT"
+            PATCH = "PATCH"
+            GET = "GET"
+            POST = "POST"
+            DELETE = "DELETE"
 
-    class API_VERSIONS:
+        class Content_type:
+            GEOJSON = "application/geo+json"
+            PATCH_JSON = "application/merge-patch+json"
+
+    class API_Versions:
         V20 = "2.0"
         V20220901PREVIEW = "2022-09-01-preview"
 

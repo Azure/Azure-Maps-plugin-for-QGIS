@@ -30,7 +30,7 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSettings
 from qgis.core import *
 
-from .Const import Const
+from .Constants import Constants
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 
@@ -63,7 +63,7 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
 
         config_path = (
             QgsApplication.qgisSettingsDirPath().replace("\\", "/")
-            + Const.Paths.RELATIVE_CONFIG_PATH
+            + Constants.Paths.RELATIVE_CONFIG_PATH
         )
         self.plugin_settings = QSettings(config_path, QSettings.IniFormat)
 
