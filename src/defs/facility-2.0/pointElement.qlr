@@ -211,7 +211,7 @@
         <default expression="" field="nameSubtitle" applyOnUpdate="0"/>
       </defaults>
       <constraints>
-        <constraint exp_strength="0" field="id" constraints="0" unique_strength="0" notnull_strength="0"/>
+        <constraint exp_strength="0" field="id" constraints="1" unique_strength="0" notnull_strength="0"/>
         <constraint exp_strength="0" field="originalId" constraints="0" unique_strength="0" notnull_strength="0"/>
         <constraint exp_strength="0" field="categoryId" constraints="0" unique_strength="0" notnull_strength="0"/>
         <constraint exp_strength="0" field="unitId" constraints="0" unique_strength="0" notnull_strength="0"/>
@@ -276,7 +276,7 @@ def my_form_open(dialog, layer, feature):
       <editorlayout>generatedlayout</editorlayout>
       <editable>
         <field name="categoryId" editable="1"/>
-        <field name="id" editable="0"/>
+        <field name="id" editable="1"/>
         <field name="isObstruction" editable="1"/>
         <field name="name" editable="1"/>
         <field name="nameAlt" editable="1"/>

@@ -217,7 +217,7 @@
         <default applyOnUpdate="0" field="anchorPoint" expression=""/>
       </defaults>
       <constraints>
-        <constraint constraints="0" field="id" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="1" field="id" exp_strength="0" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" field="originalId" exp_strength="0" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" field="categoryId" exp_strength="0" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" field="addressId" exp_strength="0" unique_strength="0" notnull_strength="0"/>
@@ -261,7 +261,7 @@
       <featformsuppress>0</featformsuppress>
       <editorlayout>generatedlayout</editorlayout>
       <editable>
-        <field name="id" editable="0"/>
+        <field name="id" editable="1"/>
         <field name="originalId" editable="1"/>
         <field name="categoryId" editable="1"/>
         <field name="name" editable="1"/>

@@ -207,7 +207,7 @@
         <default expression="" field="obstructionArea" applyOnUpdate="0"/>
       </defaults>
       <constraints>
-        <constraint notnull_strength="0" field="id" unique_strength="0" exp_strength="0" constraints="0"/>
+        <constraint notnull_strength="0" field="id" unique_strength="0" exp_strength="0" constraints="1"/>
         <constraint constraints="0" exp_strength="0" field="originalId" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" exp_strength="0" field="categoryId" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" exp_strength="0" field="unitId" unique_strength="0" notnull_strength="0"/>
@@ -275,7 +275,7 @@ def my_form_open(dialog, layer, feature):
       <editorlayout>generatedlayout</editorlayout>
       <editable>
         <field name="categoryId" editable="1"/>
-        <field name="id" editable="0"/>
+        <field name="id" editable="1"/>
         <field name="originalId" editable="1"/>
       </editable>
       <labelOnTop/>

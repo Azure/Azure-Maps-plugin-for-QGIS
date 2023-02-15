@@ -108,7 +108,7 @@
         <default expression="" field="name" applyOnUpdate="0"/>
       </defaults>
       <constraints>
-        <constraint exp_strength="0" constraints="0" field="id" unique_strength="0" notnull_strength="0"/>
+        <constraint exp_strength="0" constraints="1" field="id" unique_strength="0" notnull_strength="0"/>
         <constraint exp_strength="0" constraints="0" field="originalId" unique_strength="0" notnull_strength="0"/>
         <constraint exp_strength="0" constraints="3" field="name" unique_strength="1" notnull_strength="1"/>
       </constraints>
@@ -141,7 +141,7 @@
       <featformsuppress>0</featformsuppress>
       <editorlayout>generatedlayout</editorlayout>
       <editable>
-        <field name="id" editable="0"/>
+        <field name="id" editable="1"/>
         <field name="name" editable="1"/>
         <field name="originalId" editable="1"/>
       </editable>

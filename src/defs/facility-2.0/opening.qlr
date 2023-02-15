@@ -232,7 +232,7 @@ def my_form_open(dialog, layer, feature):
       <editorlayout>generatedlayout</editorlayout>
       <editable>
         <field editable="1" name="categoryId"/>
-        <field editable="0" name="id"/>
+        <field editable="1" name="id"/>
         <field editable="1" name="levelId"/>
         <field editable="1" name="originalId"/>
       </editable>

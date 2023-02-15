@@ -308,7 +308,7 @@
         <default applyOnUpdate="0" expression="" field="nameSubtitle"/>
       </defaults>
       <constraints>
-        <constraint notnull_strength="0" unique_strength="0" constraints="0" exp_strength="0" field="id"/>
+        <constraint notnull_strength="0" unique_strength="0" constraints="1" exp_strength="0" field="id"/>
         <constraint notnull_strength="0" unique_strength="0" constraints="0" exp_strength="0" field="originalId"/>
         <constraint notnull_strength="0" unique_strength="0" constraints="0" exp_strength="0" field="facilityId"/>
         <constraint notnull_strength="0" unique_strength="0" constraints="0" exp_strength="0" field="categoryId"/>
@@ -387,7 +387,7 @@ def my_form_open(dialog, layer, feature):
         <field name="abbreviatedName" editable="1"/>
         <field name="heightAboveFacilityAnchor" editable="1"/>
         <field name="verticalExtent" editable="1"/>
-        <field name="id" editable="0"/>
+        <field name="id" editable="1"/>
         <field name="name" editable="1"/>
         <field name="nameAlt" editable="1"/>
         <field name="nameSubtitle" editable="1"/>

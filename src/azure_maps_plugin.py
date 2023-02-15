@@ -104,6 +104,9 @@ class AzureMapsPlugin:
         self._progress_base = None
         self.apiName = Constants.FEATURES
         self.apiVersion = Constants.API_Versions.V20220901PREVIEW
+        self.internalDelete, self.internalCommit = False, False
+        self.failAdd, self.failChange, self.failDelete = [], [], []
+        self.addCommit, self.changeCommit, self.deleteCommit = [], [], []
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -1059,7 +1062,7 @@ class AzureMapsPlugin:
         )
         layer.featureAdded.connect(lambda fid: self.on_feature_added(fid, layer))
         layer.attributeValueChanged.connect(
-            lambda fid: self.on_attributes_changed(fid, layer)
+            lambda fid, idx, value: self.on_attributes_changed(fid, layer)
         )
         layer.updatedFields.connect(lambda: self.on_fields_changed(layer))
 
@@ -1339,6 +1342,9 @@ class AzureMapsPlugin:
                     self.areFieldsValid[fid] = True
 
     def on_features_deleted(self, feature_ids, layer, id_map):
+        if self.internalDelete:
+            self.internalDelete = False
+            return
         msg = self.QMessageBox(
             QMessageBox.Warning,
             "Deleting Features in " + layer.name() + " layer",
@@ -1370,62 +1376,296 @@ class AzureMapsPlugin:
     def committed_features_added(self, layer, id_map):
         if not self.areAllFieldsValid:
             return
-        features = layer.getFeatures()
-        for feature in features:
-            if feature["id"] in self.new_feature_list and feature.id() > 0:
-                id_map[layer.name() + ":" + str(feature.id())] = feature["id"]
+        
+        for fid in self.new_feature_list:
+            id_map[layer.name() + ":" + str(fid)] = layer.getFeature(fid)["id"]
+        
         self.new_feature_list = []
-
-    """
-    Handles Changes. Hit when the save button is clicked on Attribute table
-        1. Gathers Edits, Deletes and Creates.
-        2. Loops through each, serially, and calls respective Features API. 
-            Logs each request under "Logs" table
-        3. Outputs error message of all unsuccessful requests at the end
-    Note: 
-        1. Doesn't stop if a request is not successful. Moves on to the next request.
-        2. All requests are independent of each other and can occur in any order.
-            This is because saving can only happen in one feature class at a time, due to QGIS restrictions
-        3. Used PUT in case of Patch as well, since QGIS returns the full feature, and not just the edited parts.
-    """
-    # TODO: Ensure uncommited changes (changes which return an error) are reverted/removed from the buffer
-    # TODO: Handle Errors on the front-end with dialog box.
+    
     def on_before_commit_changes(self, layer, id_map):
+        """
+        Signal sent by QGIS when the save button is clicked on Attribute table or commitChanges() is called.
+        Runs before the changes are committed to the data provider.
+        For detailed workflow, see (../docs/commit-changes-workflow.md)
+        
+        Steps:
+            1. Check field validity
+            2. Gathers Edits, Deletes and Creates.
+            3. Rollback Changes
+            4. Commit changes to Feature Service
+            5. Apply Updates to QGIS
+            5. Handle Error
+        """
+
+        # ----------------- Check field validity ----------------- #
+        self._check_field_validity()
+
+        # ----------------- Gathers Edits, Deletes and Creates ----------------- #
+        addCommit, editCommit, deleteCommit = self._consolidate_changes(layer, id_map)
+
+        # ---------------------- Rollback Changes ---------------------- #
+        layer.editBuffer().rollBack()
+
+        # ---------------------- Commit changes to Feature Service ---------------------- #
+        failAdd, failEdit, failDelete = self._commit_changes(layer, addCommit, editCommit, deleteCommit)
+
+        # ---------------------- Handle Updates ---------------------- #
+        self._apply_updates(layer)
+
+        # ---------------------- Handle Error ---------------------- #
+        self._handle_errors(layer, failAdd, failEdit, failDelete)
+
+    def _check_field_validity(self):
+        """Check validity of fields. Throw Error if not valid."""
+        # Check if all fields are valid (when edits happen, fields can become invalid)
         if len(self.areFieldsValid) > 0:
             self.areAllFieldsValid = True
             for v in self.areFieldsValid.values():
                 self.areAllFieldsValid &= v
 
+        # areAllFieldsValid is an instance variable used in methods like on_features_added
+        # Ensures that Field validation is successful.
         if not self.areAllFieldsValid:
-            msg = self.QMessageBox(
-                QMessageBox.Warning,
-                "Field validation failed",
-                "Some fields you provided are not valid.\n"
-                + "Please correct them before saving the feature.",
-                detailedText="Some fields you provided are not valid. Please see push messages or log messages for "
-                + "details.",
-            )
-            msg.exec()
-            return
+            self.QMessageCrit(
+                title="Field validation failed", 
+                text="Some fields you provided are not valid. Please correct them before saving the feature.",
+                detailedText="Some fields you provided are not valid. See Logs for more details.")
 
-        # Gets all changes
-        edits = layer.editBuffer()
-        deletes = edits.deletedFeatureIds()
-        adds = edits.addedFeatures()
+    def _get_changes(self, layer):
+        """ Gather Creates, Edits and Deletes"""
+        editBuffer = layer.editBuffer()
+        deletes = editBuffer.deletedFeatureIds()
+        adds = editBuffer.addedFeatures()
 
-        # Determined changed features.
-        changes = set()
-        for fid in edits.changedGeometries():
-            changes.add(fid)
-        for fid in edits.changedAttributeValues():
-            changes.add(fid)
+        # Determine changed features.
+        edits = set()
+        for fid in editBuffer.changedGeometries():
+            edits.add(fid)
+        for fid in editBuffer.changedAttributeValues():
+            edits.add(fid)
         for fid in deletes:
-            changes.discard(fid)
+            edits.discard(fid)
+        
+        return adds, edits, deletes
 
+    def _consolidate_changes(self, layer, id_map):
+        """
+        Consolidate changes and return a list of changes to be committed.
+
+        Steps:
+            1. Gather edits, deletes and creates
+            2. Prepare exporter to export features to GeoJSON
+            3. Loop through changes and add store them in respective commit list 
+        """
+
+        # ----------------- Gather edits, deletes and creates ----------------- #
+        adds, edits, deletes = self._get_changes(layer)
+
+        # ----------------- Get GeoJSON Feature Exporter ----------------- #
+        exporter = self._get_feature_exporter(layer, adds, edits)
+
+        # ---------------------- Loop through changes and add store them in respective commit list ---------------------- #
+        addCommit, editCommit, deleteCommit = [], [], []
+        # Loop through Creates
+        for fid in adds:
+            self.update_ids(layer, layer.getFeature(fid))
+            feature = layer.getFeature(fid)
+            featureJson = self._export_feature(exporter, feature, feature['id']) # Export feature to GeoJSON
+            addCommit.append((fid, feature, featureJson))
+
+        # Loop through Edits
+        for fid in edits:
+            self.update_ids(layer, layer.getFeature(fid))
+            feature = layer.getFeature(fid)
+            key = layer.name() + ":" + str(fid)
+
+            # If ID is a change, take that ID, else take the newly added id
+            if fid > 0 and key in id_map: 
+                temp_id = id_map[key]
+                featureJson = self._export_feature(exporter, feature, temp_id) # Export feature to GeoJSON
+                oldFeature = next(layer.dataProvider().getFeatures(QgsFeatureRequest().setFilterFid(fid)))
+                editCommit.append((fid, temp_id, feature, oldFeature, featureJson))
+            else: 
+                adds[fid] = None # Remove ID from adds, to not double count, if the change is an add
+                featureJson = self._export_feature(exporter, feature, feature['id']) # Export feature to GeoJSON
+                addCommit.append((fid, feature, featureJson)) # Add it to the add list
+        
+        # Loop through Deletes
+        for fid in deletes:
+            wid = id_map[layer.name() + ":" + str(fid)]
+            oldFeature = next(layer.dataProvider().getFeatures(QgsFeatureRequest().setFilterFid(fid)))
+            deleteCommit.append((fid, wid, oldFeature))
+
+        return addCommit, editCommit, deleteCommit
+
+    def _compare_feature_changes(self, newFeature, oldFeature):
+        """Compares the changes made to a feature
+        Returns a dictionary of the changes made to the feature
+        """
+        changes = {}
+        for i,field in enumerate(newFeature.fields()):
+            if newFeature[field.name()] != oldFeature[field.name()]:
+                changes[field.name()] = (newFeature[field.name()], i)
+        return changes
+
+    def _commit_changes(self, layer, addCommit, editCommit, deleteCommit):
+        """
+        Handles commits to the Feature Service.
+
+        Note: 
+            1. Doesn't stop if a request is not successful. Moves on to the next request.
+            2. All requests are independent of each other and can occur in any order.
+            This is because saving can only happen in one feature class at a time, due to QGIS restrictions
+            3. Used PUT in case of Patch as well, since QGIS returns the full feature, and not just the edited parts.
+        """
+
+        failAdd, failEdit, failDelete = [], [], []
+
+        layer.startEditing()
+
+        # ---------------------- Commit changes to Feature Service ---------------------- #
+        # Looping through creates
+        for fid, feature, body_str in addCommit:
+            commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=layer.name()) + self.query_string
+            resp = self._handle_commit(Constants.HTTPS.Methods.POST, commit_url, body_str)
+            if resp["success"]: 
+                layer.addFeature(feature) # Make the commit
+            else:
+                failAdd.append((fid, feature['id'], resp)) # Add to list of failed commits
+                
+        # Looping through edits
+        for fid, featureId, feature, oldFeature, body_str in editCommit:
+            commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
+            resp = self._handle_commit(Constants.HTTPS.Methods.PUT, commit_url, body_str)
+            if resp["success"]:
+                for newFeatureChange, idx in self._compare_feature_changes(feature, oldFeature).values(): # Make the commit
+                    layer.changeAttributeValue(fid, idx, newFeatureChange)
+                layer.changeAttributeValue(fid, layer.fields().indexFromName("id"), featureId) # Since ID cannot be changed, change it back to the original
+                layer.changeGeometry(fid, feature.geometry()) # Update geometry
+            else:
+                failEdit.append((fid, featureId, resp))
+
+        # Looping through deletes
+        for fid, featureId, oldFeature in deleteCommit:
+            commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
+            resp = self._handle_commit(Constants.HTTPS.Methods.DELETE, commit_url)
+            if resp["success"]:
+                self.internalDelete = True # Mark delete as internal, to skip function
+                layer.deleteFeature(fid)
+            else:
+                failDelete.append((fid, featureId, resp))
+
+        return failAdd, failEdit, failDelete
+
+    def _apply_updates(self, layer):
+        """Handle changes to other fields, if any, due to the creates and edits"""
+
+        successAdd, successEdit, _ = self._get_changes(layer)
+
+        # Update the floor field if it exists, for all successful creates and edits
+        floor_index = layer.dataProvider().fieldNameIndex("floor")
+        if floor_index != -1:
+            self.update_floors(successAdd, layer, floor_index)
+            self.update_floors(successEdit, layer, floor_index)
+
+        # Update New Features List to populate id_map once features are created
+        self.new_feature_list = list(successAdd.keys())
+
+        # (if modified) Update the layer group name w/ updated facility layer
+        self._update_layer_group_name(layer)
+
+    def _handle_errors(self, layer, failAdd, failEdit, failDelete):
+        """
+        Handles the errors from the Feature Service
+        TODO: Currently only error message shown, but will add logging
+        """
+        # If any errors, display all of them appropriately
+        if (len(failAdd)+len(failDelete)+len(failEdit)>0):
+            error_list = ["Add Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failAdd] + \
+                        ["Edit Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failEdit] + \
+                        ["Delete Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failDelete]
+            self.QMessageCrit(
+                title="Save Failed!",
+                text="Your saves to {} layer has failed!".format(layer.name()),
+                informativeText="Edits, deletes or creates have not been saved to your database.\nPlease fix the issues and try saving again.",
+                detailedText='\n'.join(error_list)
+            )
+        return
+
+    def _handle_commit(self, commit_type, commit_url, body=None):
+        self.QLogInfo("{}\t{}".format(commit_type, commit_url))
+        # Make the request
+        try:
+            if commit_type==Constants.HTTPS.Methods.POST:
+                headers = {"content-type": Constants.HTTPS.Content_type.GEOJSON}
+                r = requests.post(
+                    commit_url,
+                    data=body,
+                    headers=headers,
+                    timeout=60,
+                    verify=True,
+                )
+            elif commit_type==Constants.HTTPS.Methods.PUT:
+                headers = {"content-type": Constants.HTTPS.Content_type.GEOJSON}
+                r = requests.put(
+                    commit_url,
+                    data=body,
+                    headers=headers,
+                    timeout=60,
+                    verify=True,
+                )
+            elif commit_type==Constants.HTTPS.Methods.DELETE:
+                r = requests.delete(
+                    commit_url,
+                    timeout=60,
+                    verify=True,
+                )
+            else:
+                raise Exception("") # TODO: Fix this
+        # Handle exceptions
+        except requests.exceptions.RequestException as err:
+            error_text = "Exception occurred while sending {} request. Error: {}".format(commit_type, str(err))
+            self.QLogCrit("{}\t{}".format("Failed", error_text))
+            return {
+                "success": False,
+                "error_text": error_text,
+                "response": None
+            }
+        except Exception as err:
+            error_text = "Unexpected exception occurred while sending {} request. Error: {}".format(commit_type, str(err))
+            self.QLogCrit("{}\t{}".format("Failed", error_text))
+            return {
+                "success": False,
+                "error_text": error_text,
+                "response": None
+            }
+
+        # If reponse gives error 
+        if r.status_code not in [201, 204]:
+            error_text = r.json()["error"]["message"]
+            self.QLogCrit("{}\t{}".format(r.status_code, error_text))
+            return {
+                "success": False,
+                "error_text": error_text,
+                "response": r
+            }
+        else:
+            # Success!
+            self.QLogInfo("{}\t{}".format(r.status_code, "Sucess"))
+            return {
+                "success": True,
+                "error_text": None,
+                "response": r
+            }
+
+    def _get_feature_exporter(self, layer, adds, edits):
+        """Prepare Exporter to export features to GeoJSON"""
+        # https://qgis.org/pyqgis/3.8/core/QgsJsonExporter.html
+        # Only needed in case we are adding/changing a feature
         exporter = QgsJsonExporter(layer, 7)
-        if len(changes) != 0 or len(adds) != 0:
-            if len(changes)!=0:
-                fid = next(iter(changes)) # Get the first change, if exists
+        if len(edits) != 0 or len(adds) != 0:
+            if len(edits)!=0:
+                fid = next(iter(edits)) # Get the first change, if exists
             else:
                 fid = next(iter(adds)) # Otherwise get the first add.
             feature = layer.getFeature(fid)
@@ -1436,192 +1676,18 @@ class AzureMapsPlugin:
                 if index != -1:
                     includedList.append(index)
             exporter.setAttributes(includedList)
+        return exporter
 
+    def _export_feature(self, exporter, feature, input_id):
+        """Export feature to GeoJSON"""
+        # https://qgis.org/pyqgis/3.8/core/QgsJsonExporter.html
+        featureJson = json.loads(exporter.exportFeature(feature, {}, input_id))
+        featureJson.pop("bbox", None) # Remove bbox property, to not cause unexpected issues in service later
+        return json.dumps(featureJson)
 
-        # ----------- #
-        # Getting all features based on the IDs
-        addFeatures, changeFeatures, deleteFeatures = [], [], []
-
-        for fid in adds:
-            self.update_ids(layer, layer.getFeature(fid))
-            feature = layer.getFeature(fid)
-            body_str = exporter.exportFeature(feature, {}, fid)
-            addFeatures.append((fid,body_str))
-
-        for fid in changes:
-            self.update_ids(layer, layer.getFeature(fid))
-            feature = layer.getFeature(fid)
-            key = layer.name() + ":" + str(fid)
-
-            # If ID is a change, take that ID, else take the newly added id
-            if fid > 0 and key in id_map: 
-                temp_id = id_map[key]
-            else: 
-                temp_id = fid
-                adds[fid] = None # Remove ID from adds, to not double count, if the change is an add
-            featureJson = json.loads(exporter.exportFeature(feature, {}, temp_id))
-            featureJson.pop("bbox", None) # Remove bbox property, to not cause unexpected issues in service later
-            changeFeatures.append((temp_id, json.dumps(featureJson)))
-
-        for fid in deletes:
-            wid = id_map[layer.name() + ":" + str(fid)]
-            deleteFeatures.append(wid)
-
-
-        # ----------- #
-        # Looping through all features, sending requests and recording failures
-        failAdd, successAdd = [], []
-        failChanges, successChanges = [], []
-        failDeletes, successDeletes = [], []
-
-        # Looping through all add features
-        for featureId, body_str in addFeatures:
-            commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=layer.name()) + self.query_string
-            resp = self._handle_commit(Constants.HTTPS.Methods.POST, commit_url, body_str)
-            if resp["success"]: successAdd.append((featureId, resp))
-            else: failAdd.append((featureId, resp))
-        
-        # Looping through all changed features
-        for featureId, body_str in changeFeatures:
-            commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
-            resp = self._handle_commit(Constants.HTTPS.Methods.PUT, commit_url, body_str)
-            if resp["success"]: successChanges.append((featureId, resp))
-            else: failChanges.append((featureId, resp))
-
-        # Looping through all deleted features
-        for featureId in deleteFeatures:
-            commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
-            resp = self._handle_commit(Constants.HTTPS.Methods.DELETE, commit_url)
-            if resp["success"]: successDeletes.append((featureId, resp))
-            else: failDeletes.append((featureId, resp))
-
-        # If any errors, display all of them appropriately
-        if (len(failAdd)+len(failDeletes)+len(failChanges)>0):
-            error_list = ["Add Failed. Feature id: {}. Details: {}".format(featureId, resp["error_text"]) for (featureId, resp) in failAdd] + \
-                        ["Edit Failed. Feature id: {}. Details: {}".format(featureId, resp["error_text"]) for (featureId, resp) in failChanges] + \
-                        ["Delete Failed. Feature id: {}. Details: {}".format(featureId, resp["error_text"]) for (featureId, resp) in failDeletes]
-            msg = self.QMessageBox(
-                    icon = QMessageBox.Critical,
-                    title = "Save Failed!",
-                    text = "Your saves to " + layer.name() + " layer has failed!",
-                    informativeText = "Edits, deletes or creates have not been saved to your database.\nPlease fix the issues and try saving again.",
-                    detailedText = '\n'.join(error_list)
-                )
-            msg.exec()
-            return
-
-        floor_index = layer.dataProvider().fieldNameIndex("floor")
-        created = None
-        if adds is not None and len(adds) != 0:
-            created = r.json()["createdfeatures"]
-        # TODO: This doesn't work - handle with reverting changes task
-        # If floor attribute is found, update floor to updated or created value
-
-        if floor_index != -1:
-            self.update_floors(adds, layer, floor_index, created)
-            self.update_floors(changes, layer, floor_index, created)
-
-        if created is not None:
-            for fid in adds:
-                feature = layer.getFeature(fid)
-                # Update newly created feature with ID from Azure Maps response
-                id_index = layer.dataProvider().fieldNameIndex("id")
-                originalId_index = layer.dataProvider().fieldNameIndex("originalId")
-                for ids in created:
-                    user_supplied_id = ids["user_supplied_id"]
-                    # when originalId is supplied, returned user_supplied_id should match with it. Otherwise, fid is used as originalId
-                    if user_supplied_id is not None and (
-                        user_supplied_id == feature["originalId"]
-                        or user_supplied_id == str(fid)
-                    ):
-                        newId = ids["service_assigned_id"]
-                        layer.changeAttributeValue(
-                            layer.getFeature(fid).id(), id_index, newId
-                        )
-                        layer.changeAttributeValue(
-                            layer.getFeature(fid).id(),
-                            originalId_index,
-                            user_supplied_id,
-                        )
-                        # Add feature to list to accessed after it's actually created in QGIS (gets and ID above 0)
-                        self.new_feature_list.append(newId)
-
-        # (if modified) Update the layer group name w/ updated facility layer
-        self._update_layer_group_name(layer)
-
-    """
-    Send request, handle exceptions, handle responses - for PUT, Create, Delete
-    """
-    def _handle_commit(self, commit_type, commit_url, body=None):
-        self.InfoLog("{}\t{}".format(commit_type, commit_url))
-        # Make the request
-        try:
-            if commit_type==Constants.HTTPS.Methods.POST:
-                headers = {"content-type": Constants.HTTPS.Content_type.GEOJSON}
-                r = requests.post(
-                    commit_url,
-                    data=body,
-                    headers=headers,
-                    timeout=30,
-                    verify=True,
-                )
-            elif commit_type==Constants.HTTPS.Methods.PUT:
-                headers = {"content-type": Constants.HTTPS.Content_type.GEOJSON}
-                r = requests.put(
-                    commit_url,
-                    data=body,
-                    headers=headers,
-                    timeout=30,
-                    verify=True,
-                )
-            elif commit_type==Constants.HTTPS.Methods.DELETE:
-                r = requests.delete(
-                    commit_url,
-                    timeout=30,
-                    verify=True,
-                )
-            else:
-                raise Exception("") # TODO: Fix this
-        # Handle exceptions
-        except requests.exceptions.RequestException as err:
-            error_text = "Exception occurred while sending {} request.".format(commit_type)
-            self.CritLog("{}\t{}".format("Failed", error_text))
-            return {
-                "success": False,
-                "error_text": error_text,
-                "response": None
-            }
-        except:
-            error_text = "Unexpected exception occurred while sending {} request.".format(commit_type)
-            self.CritLog("{}\t{}".format("Failed", error_text))
-            return {
-                "success": False,
-                "error_text": error_text,
-                "response": None
-            }
-
-        # If reponse gives error 
-        if r.status_code not in [201, 204]:
-            error_text = r.json()["error"]["message"]
-            self.CritLog("{}\t{}".format(r.status_code, error_text))
-            return {
-                "success": False,
-                "error_text": error_text,
-                "response": r
-            }
-        else:
-            # Success!
-            self.InfoLog("{}\t{}".format(r.status_code, "Sucess"))
-            return {
-                "success": True,
-                "error_text": None,
-                "response": r
-            }
-
-    # Update background facilityId, categoryId, levelId, addressId based on the value in selected box
     def update_ids(self, layer, feature):
+        """Update background facilityId, categoryId, levelId, addressId based on the value in selected box"""
         for key in self.relation_map:
-            # print("key: " + key + " value: " + self.relation_map[key])
             if feature.fieldNameIndex(key) != -1:
                 # Temp fix until schema is changed - PBI 6216025
                 if key == "levels_reached":
@@ -1642,8 +1708,8 @@ class AzureMapsPlugin:
                         feature.attribute(key),
                     )
 
-    def update_floors(self, new, layer, floor_index, created):
-        for fid in new:
+    def update_floors(self, fids, layer, floor_index):
+        for fid in fids:
             feature = layer.getFeature(fid)
             if feature.fieldNameIndex("levelId") != -1:
                 floor = self.level_to_ordinal[feature["levelId"]]
@@ -1781,7 +1847,7 @@ class AzureMapsPlugin:
         elif(request_type == Constants.HTTPS.Methods.PATCH): method = requests.patch
 
         headers = {"content-type": content_type} if content_type else {}
-        self.InfoLog("{}\t{}".format(request_type, url))
+        self.QLogInfo("{}\t{}".format(request_type, url))
 
         try:
             r = method(url, data=body, headers=headers, timeout=30, verify=True)
@@ -1876,6 +1942,27 @@ class AzureMapsPlugin:
         progress.close()
         self._getFeaturesButton_setEnabled(True)
 
+    """Logging Method"""
+    def QLog(self, level, log_text, tag="Logs"):
+        if type(log_text) == dict: log_text = json.dumps(log_text)
+        sub_key_encoded = "subscription-key={}".format(self.dlg.sharedKey.text())
+        sub_key_replace = "subscription-key=***{}".format(self.dlg.sharedKey.text()[-3:])
+        log_text = log_text.replace(sub_key_encoded, sub_key_replace)
+        QgsMessageLog.logMessage(
+                log_text,
+                tag,
+                level,
+            )
+    
+    """Informational Logs"""
+    def QLogInfo(self, log_text): 
+        self.QLog(Qgis.Info, log_text)
+
+    """Critical Logs"""
+    def QLogCrit(self, log_text): 
+        self.QLog(Qgis.Critical, log_text)
+
+    """Custom QGIS Message Dialog Box""" 
     def QMessageBox(
         self,
         icon,
@@ -1922,21 +2009,24 @@ class AzureMapsPlugin:
 
         return message_box
 
-    """Logging Method"""
-    def QLog(self, log_text, level, tag="Logs"):
-        if type(log_text) == dict: log_text = json.dumps(log_text)
-        QgsMessageLog.logMessage(
-                log_text,
-                tag,
-                level,
-            )
+    """QGIS Message Dialog"""
+    def QMessage(self, level, title, text, informativeText="", detailedText=""):
+        msg = self.QMessageBox(icon=level, title=title, text=text, 
+                    informativeText=informativeText, detailedText=detailedText)
+        msg.exec()
+        return
+
+    """Informational Messages"""
+    def QMessageInfo(self, title, text, informativeText="", detailedText=""): 
+        self.QMessage(QMessageBox.Information, title, text, informativeText, detailedText)
     
-    """Informational Category Logs"""
-    def InfoLog(self, log_text): self.QLog(log_text, Qgis.Info)
+    """Warning Messages"""
+    def QMessageWarn(self, title, text, informativeText="", detailedText=""): 
+        self.QMessage(QMessageBox.Warning, title, text, informativeText, detailedText)
 
-    """Critical Category Logs"""
-    def CritLog(self, log_text): self.QLog(log_text, Qgis.Critical)
-
+    """Critical Messages"""
+    def QMessageCrit(self, title, text, informativeText="", detailedText=""): 
+        self.QMessage(QMessageBox.Critical, title, text, informativeText, detailedText)
 
 def get_depth(collection_name, references):
     ref_list = references.get(collection_name, None)

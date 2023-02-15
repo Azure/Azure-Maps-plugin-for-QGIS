@@ -278,7 +278,7 @@
 
       </defaults>
       <constraints>
-        <constraint notnull_strength="0" field="id" unique_strength="0" exp_strength="0" constraints="0"/>
+        <constraint notnull_strength="0" field="id" unique_strength="0" exp_strength="0" constraints="1"/>
         <constraint notnull_strength="0" field="originalId" unique_strength="0" exp_strength="0" constraints="0"/>
         <constraint notnull_strength="0" field="categoryId" unique_strength="0" exp_strength="0" constraints="0"/>
         <constraint notnull_strength="0" field="isOpenArea" unique_strength="0" exp_strength="0" constraints="0"/>
@@ -354,7 +354,7 @@ def my_form_open(dialog, layer, feature):
         <field editable="1" name="addressId"/>
         <field editable="1" name="addressRoomNumber"/>
         <field editable="1" name="categoryId"/>
-        <field editable="0" name="id"/>
+        <field editable="1" name="id"/>
         <field editable="1" name="isOpenArea"/>
         <field editable="1" name="levelId"/>
         <field editable="1" name="name"/>

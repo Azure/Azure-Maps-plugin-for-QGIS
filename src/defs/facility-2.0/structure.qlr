@@ -190,7 +190,7 @@
         <default applyOnUpdate="0" expression="" field="nameAlt"/>
       </defaults>
       <constraints>
-        <constraint notnull_strength="0" unique_strength="0" constraints="0" exp_strength="0" field="id"/>
+        <constraint notnull_strength="0" unique_strength="0" constraints="1" exp_strength="0" field="id"/>
         <constraint notnull_strength="0" unique_strength="0" constraints="0" exp_strength="0" field="originalId"/>
         <constraint notnull_strength="0" unique_strength="0" constraints="0" exp_strength="0" field="categoryId"/>
         <constraint notnull_strength="0" unique_strength="0" constraints="0" exp_strength="0" field="levelId"/>
@@ -252,7 +252,7 @@ def my_form_open(dialog, layer, feature):
       <editorlayout>generatedlayout</editorlayout>
       <editable>
         <field name="categoryId" editable="1"/>
-        <field name="id" editable="0"/>
+        <field name="id" editable="1"/>
         <field name="levelId" editable="1"/>
         <field name="name" editable="1"/>
         <field name="originalId" editable="1"/>
