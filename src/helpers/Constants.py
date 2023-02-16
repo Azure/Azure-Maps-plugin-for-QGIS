@@ -1,4 +1,4 @@
-from .models.Facility_2 import Facility_2
+from ..models.Facility_2 import Facility_2
 class Constants(Facility_2):
     class Paths:
         RELATIVE_CONFIG_PATH = "python/plugins/QGISPlugin/plugin-config.ini"

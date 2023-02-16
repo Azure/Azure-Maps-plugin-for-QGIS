@@ -30,15 +30,17 @@ from qgis.core import *
 # Initialize Qt resources from file resources.py
 from QGISPlugin.models.Collection import Collection
 from QGISPlugin.models.Ontology import Ontology
-from .Constants import Constants
+from .helpers.Constants import Constants
 from .resources import *
 
 # Import the code for the dialog
 from .azure_maps_plugin_dialog import AzureMapsPluginDialog
 
-from .progress_iterator import ProgressIterator
-from .level_picker import LevelPicker
-from .validation_utility import ValidationUtility
+from .helpers.progress_iterator import ProgressIterator
+from .helpers.level_picker import LevelPicker
+from .helpers.validation_utility import ValidationUtility
+from .helpers.AzureMapsPluginLogger import AzureMapsPluginLogger
+from .helpers.AzureMapsPluginDialogBox import AzureMapsPluginDialogBox
 
 from shapely.geometry import mapping, shape
 
@@ -104,9 +106,18 @@ class AzureMapsPlugin:
         self._progress_base = None
         self.apiName = Constants.FEATURES
         self.apiVersion = Constants.API_Versions.V20220901PREVIEW
-        self.internalDelete, self.internalCommit = False, False
-        self.failAdd, self.failChange, self.failDelete = [], [], []
-        self.addCommit, self.changeCommit, self.deleteCommit = [], [], []
+        self.internalDelete = False
+
+        self.dialogBox = AzureMapsPluginDialogBox(self.iface)
+        self._setup_logger()
+
+    def _setup_logger(self):
+        self.logger = AzureMapsPluginLogger(self.iface,
+                            hideSubscriptionKey=True,
+                            subscriptionKey=self.dlg.sharedKey.text())
+
+    def _get_subscription_key(self):
+        return self.dlg.sharedKey.text()
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -313,25 +324,21 @@ class AzureMapsPlugin:
         self._getFeaturesButton_setEnabled(False)
         self.level_picker.clear()
         dataset_id = self.dlg.datasetId.text()
+        self.logger.setSubscriptionKey(self._get_subscription_key())
+        self.logger.setDatasetId(dataset_id)
 
         # Condition: Only one dataset is allowed at a time
         if (
             self.current_dataset_id is not None
             and self.current_dataset_id != dataset_id
         ):
-            warning_msg = self.QMessageBox(
-                QMessageBox.Warning,
-                "Warning",
-                "We can only load one dataset at a time. \n"
-                + "Would you like to remove the existing dataset and load a new dataset?\n\n"
-                + "To remove: "
-                + self.current_dataset_id
-                + "\n"
-                + "To add: "
-                + dataset_id,
-                QMessageBox.Yes | QMessageBox.Cancel,
+            warning_response = self.dialogBox.QMessageWarn(
+                title="Warning",
+                text="""We can only load one dataset at a time. 
+                        \nWould you like to remove the existing dataset and load a new dataset?\n\n
+                        To remove: {} \nTo add: {}""".format(self.current_dataset_id, dataset_id),
+                buttons=QMessageBox.Yes | QMessageBox.Cancel,
             )
-            warning_response = warning_msg.exec()
 
             if warning_response == QMessageBox.Cancel:
                 self._getFeaturesButton_setEnabled(True)
@@ -1062,7 +1069,7 @@ class AzureMapsPlugin:
         )
         layer.featureAdded.connect(lambda fid: self.on_feature_added(fid, layer))
         layer.attributeValueChanged.connect(
-            lambda fid, idx, value: self.on_attributes_changed(fid, layer)
+            lambda fid: self.on_attributes_changed(fid, layer)
         )
         layer.updatedFields.connect(lambda: self.on_fields_changed(layer))
 
@@ -1213,14 +1220,12 @@ class AzureMapsPlugin:
         return layer
 
     def on_fields_changed(self, layer):
-        msg = self.QMessageBox(
-            QMessageBox.Warning,
-            "Change fields",
-            "Fields are immutable on " + layer.name() + " layer.",
-            detailedText="Please do not manually change fields on this layer. Otherwise, you may experience failures "
-            "on saving your data. ",
+        self.dialogBox.QMessageWarn(
+            title="Change fields",
+            text="Fields are immutable on {} layer.".format(layer.name()),
+            detailedText="""Please do not manually change fields on this layer. 
+                            Otherwise, you may experience failures on saving your data.""",
         )
-        msg.exec()
 
     def on_feature_added(self, fid, layer):
         feature = layer.getFeature(fid)
@@ -1345,14 +1350,6 @@ class AzureMapsPlugin:
         if self.internalDelete:
             self.internalDelete = False
             return
-        msg = self.QMessageBox(
-            QMessageBox.Warning,
-            "Deleting Features in " + layer.name() + " layer",
-            "Are you sure to delete these features?",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            "Please make sure other layers are not referencing these features before deleting them.\n"
-            "Otherwise, the delete operation will fail and you cannot access those features before loading data again.",
-        )
 
         for fid in feature_ids:
             if fid in self.areFieldsValid.keys():
@@ -1364,7 +1361,13 @@ class AzureMapsPlugin:
             key = layer.name() + ":" + str(fid)
             # raise confirmation dialog for deleting committed features
             if key in id_map:
-                warning_response = msg.exec()
+                warning_response = self.dialogBox.QMessageWarn(
+                    title = "Deleting Features in {} layer".format(layer.name()),
+                    text = "Are you sure to delete these features?",
+                    buttons = QMessageBox.Yes | QMessageBox.Cancel,
+                    detailedText="""Please make sure other layers are not referencing these features before deleting them.\n
+                        Otherwise, the delete operation will fail and you cannot access those features before loading data again."""
+                )
                 if warning_response == QMessageBox.Cancel:
                     # Stop a current editing operation and discards any uncommitted edits
                     layer.rollBack()
@@ -1426,7 +1429,7 @@ class AzureMapsPlugin:
         # areAllFieldsValid is an instance variable used in methods like on_features_added
         # Ensures that Field validation is successful.
         if not self.areAllFieldsValid:
-            self.QMessageCrit(
+            self.dialogBox.QMessageCrit(
                 title="Field validation failed", 
                 text="Some fields you provided are not valid. Please correct them before saving the feature.",
                 detailedText="Some fields you provided are not valid. See Logs for more details.")
@@ -1527,7 +1530,7 @@ class AzureMapsPlugin:
         # Looping through creates
         for fid, feature, body_str in addCommit:
             commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=layer.name()) + self.query_string
-            resp = self._handle_commit(Constants.HTTPS.Methods.POST, commit_url, body_str)
+            resp = self.apply_url(commit_url, Constants.HTTPS.Methods.POST, body_str)
             if resp["success"]: 
                 layer.addFeature(feature) # Make the commit
             else:
@@ -1536,7 +1539,7 @@ class AzureMapsPlugin:
         # Looping through edits
         for fid, featureId, feature, oldFeature, body_str in editCommit:
             commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
-            resp = self._handle_commit(Constants.HTTPS.Methods.PUT, commit_url, body_str)
+            resp = self.apply_url(commit_url, Constants.HTTPS.Methods.PUT, body_str)
             if resp["success"]:
                 for newFeatureChange, idx in self._compare_feature_changes(feature, oldFeature).values(): # Make the commit
                     layer.changeAttributeValue(fid, idx, newFeatureChange)
@@ -1548,7 +1551,7 @@ class AzureMapsPlugin:
         # Looping through deletes
         for fid, featureId, oldFeature in deleteCommit:
             commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
-            resp = self._handle_commit(Constants.HTTPS.Methods.DELETE, commit_url)
+            resp = self.apply_url(commit_url, Constants.HTTPS.Methods.DELETE)
             if resp["success"]:
                 self.internalDelete = True # Mark delete as internal, to skip function
                 layer.deleteFeature(fid)
@@ -1584,16 +1587,14 @@ class AzureMapsPlugin:
             error_list = ["Add Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failAdd] + \
                         ["Edit Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failEdit] + \
                         ["Delete Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failDelete]
-            self.QMessageCrit(
+            self.dialogBox.QMessageCrit(
                 title="Save Failed!",
                 text="Your saves to {} layer has failed!".format(layer.name()),
                 informativeText="Edits, deletes or creates have not been saved to your database.\nPlease fix the issues and try saving again.",
                 detailedText='\n'.join(error_list)
             )
         return
-
-    def _handle_commit(self, commit_type, commit_url, body=None):
-        self.QLogInfo("{}\t{}".format(commit_type, commit_url))
+        self.logger.QLogInfo("{}\t{}".format(commit_type, commit_url))
         # Make the request
         try:
             if commit_type==Constants.HTTPS.Methods.POST:
@@ -1625,7 +1626,7 @@ class AzureMapsPlugin:
         # Handle exceptions
         except requests.exceptions.RequestException as err:
             error_text = "Exception occurred while sending {} request. Error: {}".format(commit_type, str(err))
-            self.QLogCrit("{}\t{}".format("Failed", error_text))
+            self.logger.QLogCrit("{}\t{}".format("Failed", error_text))
             return {
                 "success": False,
                 "error_text": error_text,
@@ -1633,7 +1634,7 @@ class AzureMapsPlugin:
             }
         except Exception as err:
             error_text = "Unexpected exception occurred while sending {} request. Error: {}".format(commit_type, str(err))
-            self.QLogCrit("{}\t{}".format("Failed", error_text))
+            self.logger.QLogCrit("{}\t{}".format("Failed", error_text))
             return {
                 "success": False,
                 "error_text": error_text,
@@ -1643,7 +1644,7 @@ class AzureMapsPlugin:
         # If reponse gives error 
         if r.status_code not in [201, 204]:
             error_text = r.json()["error"]["message"]
-            self.QLogCrit("{}\t{}".format(r.status_code, error_text))
+            self.logger.QLogCrit("{}\t{}".format(r.status_code, error_text))
             return {
                 "success": False,
                 "error_text": error_text,
@@ -1651,7 +1652,63 @@ class AzureMapsPlugin:
             }
         else:
             # Success!
-            self.QLogInfo("{}\t{}".format(r.status_code, "Sucess"))
+            self.logger.QLogInfo("{}\t{}".format(r.status_code, "Sucess"))
+            return {
+                "success": True,
+                "error_text": None,
+                "response": r
+            }
+
+    def apply_url(self, url, request_type, body=None):
+        """Makes a request to the given url with the given request type and body.""" 
+        content_type=None
+        if(request_type == Constants.HTTPS.Methods.GET): method = requests.get
+        elif(request_type == Constants.HTTPS.Methods.POST): 
+            method = requests.post
+            content_type = Constants.HTTPS.Content_type.GEOJSON
+        elif(request_type == Constants.HTTPS.Methods.PUT): 
+            method = requests.put
+            content_type = Constants.HTTPS.Content_type.GEOJSON
+        elif(request_type == Constants.HTTPS.Methods.DELETE): method = requests.delete
+        elif(request_type == Constants.HTTPS.Methods.PATCH): 
+            method = requests.patch
+            content_type = Constants.HTTPS.Content_type.PATCH_JSON
+        headers = {"content-type": content_type} if content_type else {}
+
+        self.logger.QLogInfo("{}\t{}".format(request_type, url))
+        error_text = None
+
+        try:
+            r = method(url, data=body, headers=headers, timeout=60, verify=True)
+        except requests.exceptions.Timeout as err:
+            error_text = "Timeout occurred while sending {} request. Error: {}".format(request_type, str(err))
+        except requests.exceptions.ConnectionError as err:
+            error_text = "Connection error occurred while sending {} request. Error: {}".format(request_type, str(err))
+        except requests.exceptions.RequestException as err:
+            error_text = "Exception occurred while sending {} request. Error: {}".format(request_type, str(err))
+        except Exception as err:
+            error_text = "Unexpected exception occurred while sending {} request. Error: {}".format(request_type, str(err))
+        
+        if error_text:
+            self.logger.QLogCrit("{}\t{}".format("Failed", error_text))
+            return {
+                "success": False,
+                "error_text": error_text,
+                "response": None
+            }
+
+        # If reponse gives error 
+        if r.status_code not in [200, 201, 204]:
+            error_text = r.json()["error"]["message"]
+            self.logger.QLogCrit("{}\t{}".format(r.status_code, error_text))
+            return {
+                "success": False,
+                "error_text": error_text,
+                "response": r
+            }
+        else:
+            # Success!
+            self.logger.QLogInfo("{}\t{}".format(r.status_code, "Sucess"))
             return {
                 "success": True,
                 "error_text": None,
@@ -1824,72 +1881,22 @@ class AzureMapsPlugin:
         )
 
     def _open_welcome_message(self):
-        msg = QMessageBox()
-        msg.setIconPixmap(QPixmap(":/plugins/azure_maps/media/icon-circle.png"))
-        msg.setText("Welcome to the Azure Maps Plugin!")
-        msg.setInformativeText(
-            '<a href="https://aka.ms/am-qgis-plugin">Azure Maps Plugin Documentation</a>'
-        )
-        msg.setWindowTitle("Azure Maps")
-        msg.setWindowFlags(Qt.WindowStaysOnTopHint)
-        msg.exec()
+        self.dialogBox.QMessage(icon=QPixmap(":/plugins/azure_maps/media/icon-circle.png"),
+            text="Welcome to the Azure Maps Plugin!",
+            informativeText='<a href="https://aka.ms/am-qgis-plugin">Azure Maps Plugin Documentation</a>',
+            title="Azure Maps",
+            windowFlags=Qt.WindowStaysOnTopHint)
 
     def _getFeaturesButton_setEnabled(self, boolean):
         self.dlg.getFeaturesButton.setEnabled(boolean)
         self.dlg.getFeaturesButton_2.setEnabled(boolean)
 
-    # TODO: Cleanup apply_url 
-    def apply_url(self, url, request_type, body=None, content_type=None):
-        if(request_type == Constants.HTTPS.Methods.GET): method = requests.get
-        elif(request_type == Constants.HTTPS.Methods.POST): method = requests.post
-        elif(request_type == Constants.HTTPS.Methods.PUT): method = requests.put
-        elif(request_type == Constants.HTTPS.Methods.DELETE): method = requests.delete
-        elif(request_type == Constants.HTTPS.Methods.PATCH): method = requests.patch
-
-        headers = {"content-type": content_type} if content_type else {}
-        self.QLogInfo("{}\t{}".format(request_type, url))
-
-        try:
-            r = method(url, data=body, headers=headers, timeout=30, verify=True)
-            # print("{}: {}".format(r.status_code, time.time() - start))
-
-            if "atlas.azure-api.net" in r.text:
-                print("Service in PROD is still returning internal hostname")
-            return r
-        # timed out with predefined value
-        except requests.exceptions.Timeout as errt:
-            QgsMessageLog.logMessage(
-                "Request timeout error" + str(errt), "Messages", Qgis.Critical
-            )
-            self._progress_base.close()
-        # network issue(e.g. DNS failure, refused connection, etc)
-        except requests.exceptions.ConnectionError as errc:
-            QgsMessageLog.logMessage(
-                "Request connection error: " + str(errc), "Messages", Qgis.Critical
-            )
-            self._progress_base.close()
-        # other exception
-        except requests.exceptions.RequestException as err:
-            QgsMessageLog.logMessage(
-                "OOps: unknown error occurred while sending the request" + str(err),
-                "Messages",
-                Qgis.Critical,
-            )
-            self._progress_base.close()
-        except:
-            QgsMessageLog.logMessage(
-                "OOps: unexpected exception occurred while sending the request.",
-                "Messages",
-                Qgis.Critical,
-            )
-            self._progress_base.close()
-        finally:
-            pass
-
-        return None
-
     def get_url(self, url):
-        return self.apply_url(url, Constants.HTTPS.Methods.GET)
+        resp = self.apply_url(url, Constants.HTTPS.Methods.GET)
+        if resp['success']:
+            return resp['response']
+        else:
+            self._progress_base.close()
 
     def hideGroup(self, group):
         if isinstance(group, QgsLayerTreeGroup):
@@ -1941,92 +1948,6 @@ class AzureMapsPlugin:
         messageBar.pushMessage("Error", error_message, level=Qgis.Critical, duration=0)
         progress.close()
         self._getFeaturesButton_setEnabled(True)
-
-    """Logging Method"""
-    def QLog(self, level, log_text, tag="Logs"):
-        if type(log_text) == dict: log_text = json.dumps(log_text)
-        sub_key_encoded = "subscription-key={}".format(self.dlg.sharedKey.text())
-        sub_key_replace = "subscription-key=***{}".format(self.dlg.sharedKey.text()[-3:])
-        log_text = log_text.replace(sub_key_encoded, sub_key_replace)
-        QgsMessageLog.logMessage(
-                log_text,
-                tag,
-                level,
-            )
-    
-    """Informational Logs"""
-    def QLogInfo(self, log_text): 
-        self.QLog(Qgis.Info, log_text)
-
-    """Critical Logs"""
-    def QLogCrit(self, log_text): 
-        self.QLog(Qgis.Critical, log_text)
-
-    """Custom QGIS Message Dialog Box""" 
-    def QMessageBox(
-        self,
-        icon,
-        title,
-        text,
-        buttons=QMessageBox.Ok,
-        detailedText="",
-        informativeText="",
-        minSize=500,
-        windowFlags=Qt.WindowStaysOnTopHint,
-    ):
-        """
-        Parameters
-        ----------
-
-        icon : QMessageBox.Icon
-            Icon
-        title: unicode
-            Window title
-        text: unicode
-            Content text
-        buttons: QMessageBox.StandardButtons
-            Buttons for dialog
-        detailedText: unicode
-            Detailed text (Text below informative text contained within an expandable box)
-        informativeText: unicode
-            Informative text (Text below content text)
-        minSize: int
-            Minimum size
-        windowFlags: Qt.WindowFlags
-            Window flags
-        """
-        # Standard Configuration
-        message_box = QMessageBox(icon, title, text)
-        message_box.setStandardButtons(buttons)
-        message_box.setDetailedText(detailedText)
-        message_box.setInformativeText(informativeText)
-        message_box.setWindowFlags(windowFlags)
-
-        # Set minimum size - QMessageBox by default doesn't allow resizing default size
-        layout = message_box.layout()
-        spacer = QSpacerItem(minSize, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
-        layout.addItem(spacer, layout.rowCount(), 0, 1, layout.columnCount())
-
-        return message_box
-
-    """QGIS Message Dialog"""
-    def QMessage(self, level, title, text, informativeText="", detailedText=""):
-        msg = self.QMessageBox(icon=level, title=title, text=text, 
-                    informativeText=informativeText, detailedText=detailedText)
-        msg.exec()
-        return
-
-    """Informational Messages"""
-    def QMessageInfo(self, title, text, informativeText="", detailedText=""): 
-        self.QMessage(QMessageBox.Information, title, text, informativeText, detailedText)
-    
-    """Warning Messages"""
-    def QMessageWarn(self, title, text, informativeText="", detailedText=""): 
-        self.QMessage(QMessageBox.Warning, title, text, informativeText, detailedText)
-
-    """Critical Messages"""
-    def QMessageCrit(self, title, text, informativeText="", detailedText=""): 
-        self.QMessage(QMessageBox.Critical, title, text, informativeText, detailedText)
 
 def get_depth(collection_name, references):
     ref_list = references.get(collection_name, None)

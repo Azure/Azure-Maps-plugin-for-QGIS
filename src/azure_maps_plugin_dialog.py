@@ -30,7 +30,7 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSettings
 from qgis.core import *
 
-from .Constants import Constants
+from .helpers.Constants import Constants
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 

@@ -53,11 +53,9 @@ SOURCES = \
 PLUGINNAME = QGISPlugin
 
 PY_FILES = \
-	__init__.py Const.py \
+	__init__.py \
 	azure_maps_plugin.py azure_maps_plugin_dialog.py \
 	azure_maps_plugin_floor_picker.py azure_maps_plugin_welcome_message.py \
-	Const.py progress_iterator.py \
-	level_picker.py validation_utility.py \
 
 UI_FILES = azure_maps_plugin_dialog_base.ui azure_maps_plugin_floor_picker.ui azure_maps_plugin_welcome_message.ui
 
@@ -65,7 +63,7 @@ EXTRAS = metadata.txt plugin-config.ini
 
 MEDIA = media
 
-EXTRA_DIRS = geojson models defs
+EXTRA_DIRS = geojson models defs helpers
 
 COMPILED_RESOURCE_FILES = resources.py
 
