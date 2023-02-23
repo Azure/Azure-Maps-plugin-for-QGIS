@@ -426,6 +426,53 @@ S</string>
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="logsTab">
+      <attribute name="title">
+       <string>&amp;Logs</string>
+      </attribute>
+      <widget class="QGroupBox" name="groupBox">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>10</y>
+         <width>431</width>
+         <height>101</height>
+        </rect>
+       </property>
+       <property name="title">
+        <string>Logs</string>
+       </property>
+       <widget class="QgsFileWidget" name="logsFolderPicker">
+        <property name="geometry">
+         <rect>
+          <x>20</x>
+          <y>50</y>
+          <width>391</width>
+          <height>27</height>
+         </rect>
+        </property>
+        <property name="defaultRoot">
+         <string/>
+        </property>
+        <property name="storageMode">
+         <enum>QgsFileWidget::GetDirectory</enum>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_6">
+        <property name="geometry">
+         <rect>
+          <x>20</x>
+          <y>30</y>
+          <width>341</width>
+          <height>16</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Select folder to store logs. Default location would be plugin's directory</string>
+        </property>
+       </widget>
+      </widget>
+     </widget>
      <widget class="QWidget" name="aboutTab">
       <property name="acceptDrops">
        <bool>false</bool>
@@ -581,6 +628,13 @@ S</string>
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QgsFileWidget</class>
+   <extends>QWidget</extends>
+   <header>qgsfilewidget.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

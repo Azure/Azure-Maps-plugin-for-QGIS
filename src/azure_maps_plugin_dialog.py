@@ -60,11 +60,8 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
         # self.skButton.clicked.connect(self.on_sk_button_clicked)
         # self.manualADButton.clicked.connect(self.on_manual_ad_button_clicked)
         # self.appIdHelpButton.clicked.connect(self.on_appid_help_button_clicked)
-
-        config_path = (
-            QgsApplication.qgisSettingsDirPath().replace("\\", "/")
-            + Constants.Paths.RELATIVE_CONFIG_PATH
-        )
+        plugin_dir = QgsApplication.qgisSettingsDirPath().replace("\\", "/")
+        config_path = plugin_dir + Constants.Paths.RELATIVE_CONFIG_PATH
         self.plugin_settings = QSettings(config_path, QSettings.IniFormat)
 
         # Creator
@@ -83,6 +80,11 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
         # else:
         # self.adButton.setChecked(True)
 
+        # Logs
+        default_logs_folder = plugin_dir + Constants.Paths.RELATIVE_PLUGIN_PATH + "/{}".format(Constants.Logs.LOG_FOLDER_NAME)
+        self.logsFolderPicker.setDefaultRoot(self.plugin_settings.value("logsFolder", default_logs_folder))
+        self.logsFolderPicker.setFilePath(self.plugin_settings.value("logsFolder", default_logs_folder))
+
     def saveSettings(self):
         # Creator
         self.plugin_settings.setValue("datasetId", self.datasetId.text())
@@ -95,6 +97,7 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
         self.plugin_settings.setValue("sharedKey", self.sharedKey.text())
         # self.plugin_settings.setValue("manualClientId", self.manualClientId.text())
         # self.plugin_settings.setValue("bearerToken", self.bearerToken.toPlainText())
+        self.plugin_settings.setValue("logsFolder", self.logsFolderPicker.filePath())
 
     def on_get_features_clicked(self):
         self.saveSettings()

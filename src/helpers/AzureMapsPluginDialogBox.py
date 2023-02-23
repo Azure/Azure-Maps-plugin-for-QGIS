@@ -26,6 +26,7 @@ class AzureMapsPluginDialogBox:
         
         # Standard Configuration
         msg = QMessageBox(icon, title, text)
+        msg.setTextFormat(Qt.RichText)
         msg.setStandardButtons(buttons)
         msg.setDetailedText(detailedText)
         msg.setInformativeText(informativeText)

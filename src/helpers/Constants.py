@@ -1,8 +1,16 @@
 from ..models.Facility_2 import Facility_2
 class Constants(Facility_2):
     class Paths:
-        RELATIVE_CONFIG_PATH = "python/plugins/QGISPlugin/plugin-config.ini"
+        RELATIVE_PLUGIN_PATH = "python/plugins/QGISPlugin"
+        RELATIVE_CONFIG_PATH = "{}/plugin-config.ini".format(RELATIVE_PLUGIN_PATH)
         PLUGIN_CIRCLE_ICON = ":/plugins/azure_maps/media/icon-circle.png"
+
+    class Logs:
+        LOG_FOLDER_NAME = "AzureMaps_logs"
+        ERROR_LOG_FOLDER_NAME = "AzureMaps_ErrorLogs"
+        FAILURE = "Failure"
+        SUCCESS = "Success"
+        WARNING = "Warning"
 
     class Geography:
         US = "United States"

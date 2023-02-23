@@ -109,12 +109,19 @@ class AzureMapsPlugin:
         self.internalDelete = False
 
         self.dialogBox = AzureMapsPluginDialogBox(self.iface)
-        self._setup_logger()
+        self._create_logger()
 
-    def _setup_logger(self):
+    def _create_logger(self):
         self.logger = AzureMapsPluginLogger(self.iface,
                             hideSubscriptionKey=True,
-                            subscriptionKey=self.dlg.sharedKey.text())
+                            subscriptionKey=self.dlg.sharedKey.text(),
+                            autoLogToFile=True,
+                            logFolder=self.dlg.logsFolderPicker.filePath())
+    
+    def _setup_logger(self):
+        self.logger.setSubscriptionKey(self._get_subscription_key())
+        self.logger.setDatasetId(self.dlg.datasetId.text())
+        self.logger.setLogFolder(self.dlg.logsFolderPicker.filePath())
 
     def _get_subscription_key(self):
         return self.dlg.sharedKey.text()
@@ -324,8 +331,7 @@ class AzureMapsPlugin:
         self._getFeaturesButton_setEnabled(False)
         self.level_picker.clear()
         dataset_id = self.dlg.datasetId.text()
-        self.logger.setSubscriptionKey(self._get_subscription_key())
-        self.logger.setDatasetId(dataset_id)
+        self._setup_logger()
 
         # Condition: Only one dataset is allowed at a time
         if (
@@ -1580,8 +1586,8 @@ class AzureMapsPlugin:
     def _handle_errors(self, layer, failAdd, failEdit, failDelete):
         """
         Handles the errors from the Feature Service
-        TODO: Currently only error message shown, but will add logging
         """
+        self.logger.writeErrorLogChanges(failAdd, failEdit, failDelete)
         # If any errors, display all of them appropriately
         if (len(failAdd)+len(failDelete)+len(failEdit)>0):
             error_list = ["Add Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failAdd] + \
@@ -1589,75 +1595,12 @@ class AzureMapsPlugin:
                         ["Delete Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failDelete]
             self.dialogBox.QMessageCrit(
                 title="Save Failed!",
-                text="Your saves to {} layer has failed!".format(layer.name()),
-                informativeText="Edits, deletes or creates have not been saved to your database.\nPlease fix the issues and try saving again.",
+                text="""Your saves to {} layer has failed!
+Edits, deletes or creates have not been saved to your Azure Maps Account.\nPlease fix the issues and try saving again.\n
+Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.errorLogFolderPath, self.logger.errorLogFileName),
                 detailedText='\n'.join(error_list)
             )
         return
-        self.logger.QLogInfo("{}\t{}".format(commit_type, commit_url))
-        # Make the request
-        try:
-            if commit_type==Constants.HTTPS.Methods.POST:
-                headers = {"content-type": Constants.HTTPS.Content_type.GEOJSON}
-                r = requests.post(
-                    commit_url,
-                    data=body,
-                    headers=headers,
-                    timeout=60,
-                    verify=True,
-                )
-            elif commit_type==Constants.HTTPS.Methods.PUT:
-                headers = {"content-type": Constants.HTTPS.Content_type.GEOJSON}
-                r = requests.put(
-                    commit_url,
-                    data=body,
-                    headers=headers,
-                    timeout=60,
-                    verify=True,
-                )
-            elif commit_type==Constants.HTTPS.Methods.DELETE:
-                r = requests.delete(
-                    commit_url,
-                    timeout=60,
-                    verify=True,
-                )
-            else:
-                raise Exception("") # TODO: Fix this
-        # Handle exceptions
-        except requests.exceptions.RequestException as err:
-            error_text = "Exception occurred while sending {} request. Error: {}".format(commit_type, str(err))
-            self.logger.QLogCrit("{}\t{}".format("Failed", error_text))
-            return {
-                "success": False,
-                "error_text": error_text,
-                "response": None
-            }
-        except Exception as err:
-            error_text = "Unexpected exception occurred while sending {} request. Error: {}".format(commit_type, str(err))
-            self.logger.QLogCrit("{}\t{}".format("Failed", error_text))
-            return {
-                "success": False,
-                "error_text": error_text,
-                "response": None
-            }
-
-        # If reponse gives error 
-        if r.status_code not in [201, 204]:
-            error_text = r.json()["error"]["message"]
-            self.logger.QLogCrit("{}\t{}".format(r.status_code, error_text))
-            return {
-                "success": False,
-                "error_text": error_text,
-                "response": r
-            }
-        else:
-            # Success!
-            self.logger.QLogInfo("{}\t{}".format(r.status_code, "Sucess"))
-            return {
-                "success": True,
-                "error_text": None,
-                "response": r
-            }
 
     def apply_url(self, url, request_type, body=None):
         """Makes a request to the given url with the given request type and body.""" 
@@ -1675,7 +1618,7 @@ class AzureMapsPlugin:
             content_type = Constants.HTTPS.Content_type.PATCH_JSON
         headers = {"content-type": content_type} if content_type else {}
 
-        self.logger.QLogInfo("{}\t{}".format(request_type, url))
+        self.logger.QLogInfo(request_type=request_type, url=url)
         error_text = None
 
         try:
@@ -1690,7 +1633,7 @@ class AzureMapsPlugin:
             error_text = "Unexpected exception occurred while sending {} request. Error: {}".format(request_type, str(err))
         
         if error_text:
-            self.logger.QLogCrit("{}\t{}".format("Failed", error_text))
+            self.logger.QLogCrit(status=Constants.Logs.FAILURE, status_text=error_text)
             return {
                 "success": False,
                 "error_text": error_text,
@@ -1700,7 +1643,7 @@ class AzureMapsPlugin:
         # If reponse gives error 
         if r.status_code not in [200, 201, 204]:
             error_text = r.json()["error"]["message"]
-            self.logger.QLogCrit("{}\t{}".format(r.status_code, error_text))
+            self.logger.QLogCrit(status_code=r.status_code, status_text=error_text)
             return {
                 "success": False,
                 "error_text": error_text,
@@ -1708,7 +1651,7 @@ class AzureMapsPlugin:
             }
         else:
             # Success!
-            self.logger.QLogInfo("{}\t{}".format(r.status_code, "Sucess"))
+            self.logger.QLogInfo(status_code=r.status_code, status_text="Sucess")
             return {
                 "success": True,
                 "error_text": None,
