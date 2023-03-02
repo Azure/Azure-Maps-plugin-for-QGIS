@@ -21,6 +21,7 @@
  *                                                                         *
  ***************************************************************************/
 """
+import time
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -41,15 +42,16 @@ from .helpers.level_picker import LevelPicker
 from .helpers.validation_utility import ValidationUtility
 from .helpers.AzureMapsPluginLogger import AzureMapsPluginLogger
 from .helpers.AzureMapsPluginDialogBox import AzureMapsPluginDialogBox
+from .helpers.AzureMapsRequestHandler import AzureMapsRequestHandler
 
 from shapely.geometry import mapping, shape
 
 import os.path
 import requests
-import time
 import urllib.parse
 import json
-from copy import deepcopy
+from itertools import starmap
+from multiprocessing import Pool
 
 
 class AzureMapsPlugin:
@@ -97,7 +99,6 @@ class AzureMapsPlugin:
         self.schema_map = {}
         self.new_feature_list = []
         self.id_map = {}
-        self.collection_meta_map = {}
         self.relation_map = {}
         self.enum_ids = {}
         self.areFieldsValid = {}
@@ -109,19 +110,36 @@ class AzureMapsPlugin:
         self.internalDelete = False
 
         self.dialogBox = AzureMapsPluginDialogBox(self.iface)
-        self._create_logger()
+        self._create_helpers()
 
-    def _create_logger(self):
+    def _create_helpers(self):
+        """Create helpers for the plugin. Setup Logger and AzureMapsRequestHandler"""
         self.logger = AzureMapsPluginLogger(self.iface,
                             hideSubscriptionKey=True,
-                            subscriptionKey=self.dlg.sharedKey.text(),
+                            subscription_key=self.dlg.sharedKey.text(),
                             autoLogToFile=True,
-                            logFolder=self.dlg.logsFolderPicker.filePath())
+                            logFolder=self.dlg.logsFolderPicker.filePath(), 
+                            debugLog=False)
+        self.requestHandler = AzureMapsRequestHandler(
+            subscription_key=self._get_subscription_key(),
+            geography=self.dlg.geographyDropdown.currentText(),
+            api_version=self.apiVersion,
+            logger=self.logger
+        )
     
-    def _setup_logger(self):
-        self.logger.setSubscriptionKey(self._get_subscription_key())
-        self.logger.setDatasetId(self.dlg.datasetId.text())
-        self.logger.setLogFolder(self.dlg.logsFolderPicker.filePath())
+    def _setup_helpers(self):
+        """Setup helpers once the parameters are set by the user."""
+        self.logger.set_parameters(
+            subscription_key=self._get_subscription_key(),
+            dataset_id=self.dlg.datasetId.text(),
+            logFolder=self.dlg.logsFolderPicker.filePath()
+        )
+        self.requestHandler.set_parameters(
+            subscription_key=self._get_subscription_key(),
+            geography=self.dlg.geographyDropdown.currentText(),
+            api_version=self.apiVersion,
+            logger=self.logger
+        )
 
     def _get_subscription_key(self):
         return self.dlg.sharedKey.text()
@@ -326,12 +344,43 @@ class AzureMapsPlugin:
         self.dlg.creatorStatus_2.setText(status)
         QApplication.processEvents()
 
+    def get_request_base(self, url, base_error, progress, **kwargs):
+        """
+        Base function for get requests + error handling
+        Need this mainly for handling errors - stop progress bar and show error message on message bar
+        """
+        resp = self.requestHandler.get_request(url, **kwargs)
+        self._get_request_base_error(resp, base_error, progress) # call error handling function
+        return resp["response"]
+    
+    def _get_request_base_error(self, resp, base_error, progress):
+        """
+        Error handling for get requests
+        Show error message on message bar
+        Stop progress bar
+        """
+        if resp["error_text"]:
+            if "response" in resp and resp["response"]: # status code is available
+                self._apply_progress_error_message(
+                    "{} Response status code {}. Error: {}".format(
+                        base_error, resp["response"].status_code, resp["error_text"]), 
+                        progress, self.msgBar
+                )
+            self._apply_progress_error_message( # status code is not available - generic error
+                "{} Please try again later. Error: {}".format(base_error, resp["error_text"]),
+                progress,
+                self.msgBar,
+            )
+            return False
+        return True
+
     def get_features_clicked(self):
         self.close_button_clicked()
         self._getFeaturesButton_setEnabled(False)
         self.level_picker.clear()
         dataset_id = self.dlg.datasetId.text()
-        self._setup_logger()
+        self._setup_helpers()
+        self.logger.QLogInfo("{} Loading Azure Maps dataset with ID: {} {}".format('-'*15, dataset_id, '-'*15))
 
         # Condition: Only one dataset is allowed at a time
         if (
@@ -347,8 +396,7 @@ class AzureMapsPlugin:
             )
 
             if warning_response == QMessageBox.Cancel:
-                self._getFeaturesButton_setEnabled(True)
-                return
+                return self._getFeaturesButton_setEnabled(True)
             if warning_response == QMessageBox.Yes:
                 self.root.removeChildNode(self.root.findGroup(self.current_dataset_id))
             else:
@@ -358,20 +406,9 @@ class AzureMapsPlugin:
                     level=Qgis.Critical,
                     duration=0,
                 )
-                self._getFeaturesButton_setEnabled(True)
-                return
+                return self._getFeaturesButton_setEnabled(True)
 
         self.current_dataset_id = dataset_id
-
-        # Determine host name
-        if str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.US:
-            host = Constants.Host.US
-        elif str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.EU:
-            host = Constants.Host.EU
-        elif str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.TEST:
-            host = Constants.Host.US_TEST
-        else:
-            host = Constants.Host.DEFAULT
 
         # Determine bounding box.
         bbox = ""
@@ -395,12 +432,13 @@ class AzureMapsPlugin:
 
         # Start progress dialog
         progress = ProgressIterator(
-            msg="Getting dataset metadata", window_title="Retrieving features..."
+            msg="Downloading dataset", window_title="Retrieving features..."
         )
+
         # Override progress dialog config
         self._progress_base = progress._get_progress_dialog()
         self._progress_base.setFixedSize(
-            self._progress_base.width() + 175, self._progress_base.height()
+            self._progress_base.width() + 250, 150
         )
         self._progress_base.setCancelButton(None)  # Hide cancel button
         self._progress_base.setWindowFlags(
@@ -410,36 +448,13 @@ class AzureMapsPlugin:
         QApplication.processEvents()
 
         # Get dataset metadata.
-        self.features_url = Constants.API_Paths.BASE.format(host=host, apiName=self.apiName, datasetId=dataset_id)
-        self.query_string = "?" + urllib.parse.urlencode({"api-version": self.apiVersion})
-
-        if self.dlg.skButton.isChecked():
-            self.query_string += "&" + urllib.parse.urlencode(
-                {"subscription-key": self.dlg.sharedKey.text()}
-            )
-
-        r = self.get_url(Constants.API_Paths.GET_COLLECTIONS.format(base=self.features_url) + self.query_string)
-
-        if r is None:
-            self._apply_progress_error_message(
-                "Unable to read dataset metadata. Please try again later.",
-                progress,
-                self.msgBar,
-            )
-            return
-
-        if r.status_code != 200:
-            self._apply_progress_error_message(
-                "Unable to read dataset metadata. Response status code "
-                + str(r.status_code)
-                + ". "
-                + r.text,
-                progress,
-                self.msgBar,
-            )
-            return
-
-        self.ontology = Ontology(json.loads(r.text)["ontology"])
+        self.features_url = Constants.API_Paths.BASE.format(host=self.requestHandler.host, apiName=self.apiName, datasetId=dataset_id)
+        r = self.get_request_base(
+            Constants.API_Paths.GET_COLLECTIONS.format(base=self.features_url),
+            "Unable to read dataset metadata.",
+            progress,
+        )
+        self.ontology = Ontology(r["ontology"])
 
         # If successful, get all the layers.
         # Create a new dataset group layer if it doesn't exist, otherwise override the existing group layer
@@ -453,25 +468,12 @@ class AzureMapsPlugin:
         self.root.removedChildren.connect(self._on_layer_removed)
 
         # Get features from each collection.
-        collections = r.json()["collections"]
-        level_layer = None
-        category_layer = None
-        directoryInfo_layer = None
-        unit_layer = None
-        areaElement_layer = None
-        opening_layer = None
-        lineElement_layer = None
-        pointElement_layer = None
-        facility_layer = None
-        verticalPenetration_layer = None
+        collections = r["collections"]
+
         if dataset_id not in self.id_map:
             self.id_map[dataset_id] = {}
 
-        if dataset_id not in self.collection_meta_map:
-            self.collection_meta_map[dataset_id] = {}
-
         id_map = self.id_map[dataset_id]
-        collection_meta = self.collection_meta_map[dataset_id]
         collection_order = Collection.get_order(self.ontology)
 
         other_collections = [
@@ -480,9 +482,7 @@ class AzureMapsPlugin:
         # ! List must be updated if more enums will be exposed in other collections !
         enums_collection = [Constants.COLLECTIONS.CTG, Constants.COLLECTIONS.VRT, Constants.COLLECTIONS.OPN]
 
-        progress_max = (
-            len(collection_order) + len(other_collections) + len(enums_collection) + 2
-        )
+        progress_max = 2*(len(collection_order) + len(other_collections)) + 2
         self._progress_base.setMaximum(progress_max)
 
         # Clear existing enum layers, if exists
@@ -493,133 +493,108 @@ class AzureMapsPlugin:
             enums_group = self.root.insertGroup(1, enums_group_name)
         else:
             enums_group.removeAllChildren()
-
         # Construct Enum List
         enums_set = set()
-        for collectionId in enums_collection:
-            progress.next("Parsing " + collectionId + " definition")
-            r = self.get_url(
-                Constants.API_Paths.GET_COLLECTION_DEF.format(base=self.features_url, collectionId=collectionId)
-                + self.query_string
-            )
-
-            if r is None:
-                self.msgBar.pushMessage(
-                    "Error",
-                    "Unable to read collection definition. Please try again later.",
-                    level=Qgis.Critical,
-                    duration=0,
-                )
-                return
-            elif r.status_code != 200:
-                self.msgBar.pushMessage(
-                    "Error",
-                    "Unable to read collection definition. Response status code "
-                    + str(r.status_code)
-                    + ". "
-                    + r.text,
-                    level=Qgis.Critical,
-                    duration=0,
-                )
-                continue
-
-            response = r.json()
-            properties = response.get("properties")
-            for attrs in properties:
-                attr_type = attrs.get("type")
-                attr_name = attrs.get("name")
-
-                if not isinstance(attr_type, dict):
-                    continue
-                if not isinstance(attr_type.get("array"), dict) and not isinstance(
-                    attr_type.get("enum"), list
-                ):
-                    continue
-
-                enum_list = attr_type.get(
-                    "enum", attr_type.get("array", {}).get("enum")
-                )
-                if not enum_list or not attr_name or attr_name in enums_set:
-                    continue
-
-                enums_set.add(attr_name)
-                v_layer = QgsVectorLayer(
-                    "None?field=" + attr_name + ":string(0,0)", attr_name, "memory"
-                )
-                QgsProject.instance().addMapLayer(v_layer, False)
-                enums_group.addLayer(v_layer)
-                v_layer.startEditing()
-                for enum_value in enum_list:
-                    feature = QgsFeature()
-                    feature.setAttributes([enum_value])
-                    v_layer.addFeature(feature)
-                v_layer.commitChanges()
-                self.enum_ids[attr_name] = v_layer.id()
 
         level_layer = category_layer = directoryInfo_layer = unit_layer = areaElement_layer = structure_layer = \
             opening_layer = lineElement_layer = pointElement_layer = facility_layer = verticalPenetration_layer = \
             zone_layer = None
 
-        for _id in collection_order + other_collections:
-            # Find collection in API definition.
-            collection = next(c for c in collections if c["id"] == _id)
+        # Loop through collections and create tasks to get data and metadata(definition)
+        taskList = []
+        for collection in collections:
+            _id = collection["id"]
             links = collection["links"]
 
-            # Get link to item data for collection.
             data_link = next(link for link in links if link["rel"] == "items")
-
-            # Get link to metadata for collection.
-            meta_link = next(link for link in links if link["rel"] == "describedBy")
-
-            # Get metadata.
-            href = self.patch(meta_link["href"])
-
-            r = self.get_url(href)
-            if r is None:
-                self.msgBar.pushMessage(
-                    "Error",
-                    "Unable to read collection metadata. Please try again later.",
-                    level=Qgis.Critical,
-                    duration=0,
-                )
-                return
-            elif r.status_code != 200:
-                self.msgBar.pushMessage(
-                    "Error",
-                    "Unable to read collection metadata. Response status code "
-                    + str(r.status_code)
-                    + ". "
-                    + r.text,
-                    level=Qgis.Critical,
-                    duration=0,
-                )
-                continue
-
-            response = r.json()
-            properties = response["properties"]
-            names = []
-            for attrs in properties:
-                names.append(attrs["name"])
-            self.schema_map[_id] = names
-
-            collection_meta[_id] = response
-
-            # Get collection items.
-            href = self.patch(data_link["href"])
-            layer = self.load_items(
-                _id, href + bbox, self.base_group, id_map, progress
+            globals()['data_task_'+_id] = QgsTask.fromFunction(
+                "Getting " + _id + " collection",
+                self.requestHandler.get_request_parallel,
+                _id, "data", data_link["href"] + bbox, 50
             )
-            if layer is None:
-                self.base_group.removeAllChildren()
-                self.msgBar.pushMessage(
-                    "Error",
-                    "Failed to load collections. Please try again later.",
-                    level=Qgis.Critical,
-                    duration=0,
-                )
-                self._getFeaturesButton_setEnabled(True)
-                return
+            QgsApplication.taskManager().addTask(globals()['data_task_'+_id]) # Add task to global queue
+            taskList.append(globals()['data_task_'+_id]) # Add task to local list
+            
+            meta_link = next(link for link in links if link["rel"] == "describedBy")
+            globals()['definition_task_'+_id] = QgsTask.fromFunction(
+                "Getting " + _id + " collection definition",
+                self.requestHandler.get_request_parallel,
+                _id, "definition", meta_link["href"], 50
+            )
+            QgsApplication.taskManager().addTask(globals()['definition_task_'+_id])
+            taskList.append(globals()['definition_task_'+_id])
+        
+        if not taskList:
+            # If no tasks were created, request failed (since it failed to fetch the data or definition)
+            return self._get_request_base_error({"error_text": "Error in fetching data from server"}, 
+                                         "Unable to read collections data", progress)
 
+        """
+        Loop through all tasks and wait for them to finish
+        _id_data_response_map = map of collectionName and data responses.
+        _id_meta_response_map = map of collectionName and definition responses.
+        Response maps are used to store the responses of the tasks
+        All tasks have finished when the length of response maps = number of tasks/2 = number of collections
+
+        Need to use this manual method, instead of QgsTaskManager.countActiveTasks(), since the latter does not work properly with plugins
+        neither does QgsTask.isActive() or QgsTask.isCanceled() work properly
+        """
+        progress.next("Loading Dataset ...")
+        _id_data_response_map, _id_meta_response_map = {}, {}
+        while (len(_id_data_response_map) != len(taskList)//2) or (len(_id_meta_response_map) != len(taskList)//2): 
+            for task in taskList:
+                _id, request_type = task.args[0], task.args[1] # Get the collectionName and requestType from the task
+                if request_type == "data": # If the task is a data task
+                    if _id in _id_data_response_map: # If we have already stored the response in response map
+                        continue
+                    elif task.returned_values is not None: # If the task finished, store the response in response map
+                        _id_data_response_map[_id] = task.returned_values
+                        progress.next("Loading Dataset ...")
+                    elif task.exception is not None: # If the task failed, store the error in response map
+                        error_json = {"error_text":task.exception, "success":False, "response":None}
+                        _id_data_response_map[_id] = error_json
+                        break
+                elif request_type == "definition": # If the task is a definition task
+                    if _id in _id_meta_response_map: # If we have already stored the response in response map
+                        continue
+                    elif task.returned_values is not None: # If the task finished, store the response in response map
+                        _id_meta_response_map[_id] = task.returned_values
+                        progress.next("Loading Dataset ...")
+                    elif task.exception is not None: # If the task failed, store the error in response map
+                        error_json = {"error_text":task.exception, "success":False, "response":None}
+                        _id_meta_response_map[_id] = error_json
+                        break
+
+        QgsApplication.taskManager().cancelAll() # Cancel all tasks
+
+        _id_layer_map = {} # Map of collectionName and layer
+        for _id in collection_order + other_collections:
+            meta_response = _id_meta_response_map[_id]
+            success = self._get_request_base_error(meta_response, "Unable to read {} collection definition".format(_id), progress) # Handle error
+            if not success:
+                self.logger.QLogDebug("Unable to read {} collection definition".format(_id))
+                return
+            self.logger.QLogDebug("Loading {} collection definition".format(_id))
+            self.load_items_definition(_id, meta_response) # Load the definition of the collection
+            if _id in enums_collection: # If the collection is an enum collection, load the enum definition
+                attr_name_list, v_layer_list = self.load_enums_definition(meta_response, enums_set)
+                for attr_name in attr_name_list: enums_set.add(attr_name)
+                for v_layer in v_layer_list: enums_group.addLayer(v_layer)
+            
+            data_response = _id_data_response_map[_id]
+            success = self._get_request_base_error(data_response, "Unable to read {} collection".format(_id), progress) # Handle error
+            if not success:
+                self.logger.QLogDebug("Unable to read {} collection".format(_id))
+                return
+            self.logger.QLogDebug("Loading {} collection".format(_id))
+            layer = self.load_items(_id, data_response, self.base_group, id_map) # Load the data of the collection into a layer
+            _id_layer_map[_id] = layer
+        
+        self.logger.QLogInfo("Loading collections successful!")
+        self.logger.QLogInfo('\t'.join(['{}: {}'.format(_id, _id_layer_map[_id].featureCount()) 
+                                        for _id in collection_order + other_collections]))
+        
+        for _id, layer in _id_layer_map.items():
             if _id == Constants.COLLECTIONS.LVL:
                 level_layer = layer
             elif _id == Constants.COLLECTIONS.CTG:
@@ -656,6 +631,7 @@ class AzureMapsPlugin:
             return
 
         progress.next("Adding Creator attributes")
+        self.logger.QLogInfo("Adding Creator attributes")
 
         # Populate relational map
         self.relation_map["category"] = "categoryId"
@@ -709,6 +685,7 @@ class AzureMapsPlugin:
         }
 
         # Level layer
+        self.logger.QLogDebug("Adding level layer attributes")
         floor_index = self.add_helper_attributes(level_layer)
         fac_index = self.add_widget(
             level_layer, "facility", "ValueRelation", facility_config
@@ -732,12 +709,13 @@ class AzureMapsPlugin:
                 feature.attribute(self.relation_map["facility"]),
             )
             ordinals.append(ordinal)
-        self.add_layer_events(level_layer, id_map, collection_meta)
+        self.add_layer_events(level_layer, id_map)
 
         for ordinal in ordinals:
             self.level_picker.append(ordinal)
 
         # Unit layer
+        self.logger.QLogDebug("Adding unit layer attributes")
         if self.ontology == Ontology.FACILITY_1:
             self._set_widget_layer_id(unit_layer, "navigableBy")
             self._set_widget_layer_id(unit_layer, "routeThroughBehavior")
@@ -772,10 +750,11 @@ class AzureMapsPlugin:
             )
             self.space_to_floors[feature["id"]] = floor
             space_to_ordinals[feature["id"]] = ordinal
-        self.add_layer_events(unit_layer, id_map, collection_meta)
+        self.add_layer_events(unit_layer, id_map)
         print('Unit Layer')
 
         # Structure layer
+        self.logger.QLogDebug("Adding structure layer attributes")
         if structure_layer is not None:
             floor_index = self.add_helper_attributes(structure_layer)
             cat_index = self.add_widget(
@@ -798,9 +777,10 @@ class AzureMapsPlugin:
                     lvl_index,
                     feature.attribute(self.relation_map["level"]),
                 )
-            self.add_layer_events(structure_layer, id_map, collection_meta)
+            self.add_layer_events(structure_layer, id_map)
 
         # Area element layer
+        self.logger.QLogDebug("Adding area element layer attributes")
         cat_index = self.add_widget(
             areaElement_layer, "category", "ValueRelation", category_config
         )
@@ -818,10 +798,11 @@ class AzureMapsPlugin:
                 feature.id(), unit_index, feature.attribute(self.relation_map["unit"])
             )
         self.add_floors_values(
-            areaElement_layer, id_map, self.space_to_floors, collection_meta
+            areaElement_layer, id_map
         )
 
         # Line element layer
+        self.logger.QLogDebug("Adding line element layer attributes")
         cat_index = self.add_widget(
             lineElement_layer, "category", "ValueRelation", category_config
         )
@@ -839,10 +820,11 @@ class AzureMapsPlugin:
                 feature.id(), unit_index, feature.attribute(self.relation_map["unit"])
             )
         self.add_floors_values(
-            lineElement_layer, id_map, self.space_to_floors, collection_meta
+            lineElement_layer, id_map
         )
 
         # Point element layer
+        self.logger.QLogDebug("Adding point element layer attributes")
         cat_index = self.add_widget(
             pointElement_layer, "category", "ValueRelation", category_config
         )
@@ -860,10 +842,11 @@ class AzureMapsPlugin:
                 feature.id(), unit_index, feature.attribute(self.relation_map["unit"])
             )
         self.add_floors_values(
-            pointElement_layer, id_map, self.space_to_floors, collection_meta
+            pointElement_layer, id_map
         )
 
         # Vertical Penetration layer
+        self.logger.QLogDebug("Adding vertical penetration layer attributes")
         if self.ontology == Ontology.FACILITY_1:
             self._set_widget_layer_id(unit_layer, "direction")
             self._set_widget_layer_id(unit_layer, "navigableBy")
@@ -893,9 +876,10 @@ class AzureMapsPlugin:
                     lvl_index,
                     feature.attribute(self.relation_map["level"]),
                 )
-            self.add_layer_events(verticalPenetration_layer, id_map, collection_meta)
+            self.add_layer_events(verticalPenetration_layer, id_map)
 
         # Opening layer
+        self.logger.QLogDebug("Adding opening layer attributes")
         if opening_layer is not None:
             if self.ontology == Ontology.FACILITY_1:
                 self._set_widget_layer_id(opening_layer, "navigableBy")
@@ -926,9 +910,10 @@ class AzureMapsPlugin:
                     lvl_index,
                     feature.attribute(self.relation_map["level"]),
                 )
-            self.add_layer_events(opening_layer, id_map, collection_meta)
+            self.add_layer_events(opening_layer, id_map)
 
         # Facility layer
+        self.logger.QLogDebug("Adding facility layer attributes")
         if facility_layer is not None:
             cat_index = self.add_widget(
                 facility_layer, "category", "ValueRelation", category_config
@@ -948,22 +933,25 @@ class AzureMapsPlugin:
                     dir_index,
                     feature.attribute(self.relation_map["address"]),
                 )
-            self.add_layer_events(facility_layer, id_map, collection_meta)
+            self.add_layer_events(facility_layer, id_map)
 
             # Update the layer group name w/ facility_layer name or ID
             self._update_layer_group_name(layer)
 
         # Category Layer
+        self.logger.QLogDebug("Adding category layer attributes")
         if category_layer is not None:
             if self.ontology == Ontology.FACILITY_1:
                 self._set_widget_layer_id(category_layer, "navigableBy")
-            self.add_layer_events(category_layer, id_map, collection_meta)
+            self.add_layer_events(category_layer, id_map)
 
         # Directory Info layer
+        self.logger.QLogDebug("Adding directory info layer attributes")
         if directoryInfo_layer is not None:
-            self.add_layer_events(directoryInfo_layer, id_map, collection_meta)
+            self.add_layer_events(directoryInfo_layer, id_map)
 
         # Zone layer
+        self.logger.QLogDebug("Adding zone layer attributes")
         if zone_layer is not None:
             floor_index = self.add_helper_attributes(zone_layer)
             cat_index = self.add_widget(
@@ -986,7 +974,7 @@ class AzureMapsPlugin:
                     lvl_index,
                     feature.attribute(self.relation_map["level"]),
                 )
-            self.add_layer_events(zone_layer, id_map, collection_meta)
+            self.add_layer_events(zone_layer, id_map)
 
         if level_layer is None or unit_layer is None:
             self.msgBar.pushMessage(
@@ -1011,6 +999,7 @@ class AzureMapsPlugin:
         self.level_picker.set_base_ordinal(0)
         self.floor_picker_changed(self.level_picker.get_index())
 
+        self.logger.QLogInfo("{} Datset successfully loaded {}".format('-'*10, '-'*10))
         # Close progress dialog
         self._progress_base.close()
 
@@ -1044,7 +1033,7 @@ class AzureMapsPlugin:
         else:
             return floor
 
-    def add_floors_values(self, layer, id_map, space_to_floors, collection_meta):
+    def add_floors_values(self, layer, id_map):
         if layer is None:
             return False
 
@@ -1059,10 +1048,10 @@ class AzureMapsPlugin:
                 if floor is not None:
                     layer.changeAttributeValue(feature.id(), floor_index, str(floor))
 
-        self.add_layer_events(layer, id_map, collection_meta)
+        self.add_layer_events(layer, id_map)
         return True
 
-    def add_layer_events(self, layer, id_map, collection_meta):
+    def add_layer_events(self, layer, id_map):
         layer.commitChanges()
         layer.beforeCommitChanges.connect(
             lambda: self.on_before_commit_changes(layer, id_map)
@@ -1079,151 +1068,152 @@ class AzureMapsPlugin:
         )
         layer.updatedFields.connect(lambda: self.on_fields_changed(layer))
 
-    def patch(self, url):
-        if str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.US:
-            url = url.replace("//atlas.microsoft.com", "//us.atlas.microsoft.com")
-        elif str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.EU:
-            url = url.replace("//atlas.microsoft.com", "//eu.atlas.microsoft.com")
-        elif str(self.dlg.geographyDropdown.currentText()) == Constants.Geography.TEST:
-            url = url.replace("//atlas.microsoft.com", "//us.t-azmaps.azurelbs.com")
+    def load_items(self, name, response, group, id_map):
+        layer = None            
+        # Load into a new layer, letting OGR take care of GeoJSON details.
+        new_layer = QgsVectorLayer(json.dumps(response), "temp", "ogr")
+        crs = new_layer.crs().toWkt()
 
-        queryStart = "&" if "?" in url else "?"
-        url += queryStart + urllib.parse.urlencode({"api-version": self.apiVersion})
-        if self.dlg.skButton.isChecked():
-            url += "&" + urllib.parse.urlencode(
-                {"subscription-key": self.dlg.sharedKey.text()}
+        # If it's the first page, create the memory layer from the WFS temp layer.
+        if layer is None:
+            wkb_type = new_layer.wkbType()
+            if wkb_type == QgsWkbTypes.NoGeometry:
+                wkt = "NoGeometry"
+            elif wkb_type == QgsWkbTypes.Point:
+                wkt = "Point"
+            elif wkb_type == QgsWkbTypes.MultiPoint:
+                wkt = "MultiPoint"
+            elif wkb_type == QgsWkbTypes.LineString:
+                wkt = "LineString"
+            elif wkb_type == QgsWkbTypes.MultiLineString:
+                wkt = "MultiLineString"
+            elif wkb_type == QgsWkbTypes.Polygon:
+                wkt = "Polygon"
+            elif wkb_type == QgsWkbTypes.MultiPolygon:
+                wkt = "MultiPolygon"
+            else:
+                return name, None
+
+            # layer = QgsVectorLayer(wkt + "?crs=" + crs + "&index=yes", name, "memory")
+            maplayer = QgsLayerDefinition.loadLayerDefinitionLayers(
+                self.plugin_dir + "/defs/" + self.ontology.value + "/" + name + ".qlr"
             )
-
-        return url
-
-    def get_next_link(self, r_json):
-        links = r_json["links"]
-        for link in links:
-            if link["rel"] == "next":
-                return self.patch(link["href"])
-
-        return None
-
-    def load_items(self, name, href, group, id_map, progress):
-        progress.next("Getting " + name + " collection")
-        r = self.get_url(href + "&limit=50")
-        layer = None
-        page = 1
-
-        while True:
-            # if timeout or network issue occurred, create error message and stop loading
-            if r is None:
-                self.msgBar.pushMessage(
-                    "Error",
-                    "Unable to read collection. Please try again later.",
-                    level=Qgis.Critical,
-                    duration=0,
+            if len(maplayer) != 0:
+                layer = maplayer[0]
+            else:
+                layer = QgsVectorLayer(
+                    wkt + "?crs=" + crs + "&index=yes", name, "memory"
                 )
-                self._getFeaturesButton_setEnabled(True)
-                return
-            # if some request failed, continue with it and log the error message
-            elif r.status_code != 200:
-                QgsMessageLog.logMessage(
-                    "Unable to read "
-                    + name
-                    + " collection with requst "
-                    + href
-                    + "&limit=50."
-                    + " Response status code "
-                    + str(r.status_code)
-                    + ". "
-                    + r.text,
-                    "Messages",
-                    level=Qgis.Critical,
-                )
-                continue
-
-            # Load into a new layer, letting OGR take care of GeoJSON details.
-            new_layer = QgsVectorLayer(r.text, "temp", "ogr")
-            crs = new_layer.crs().toWkt()
-
-            # If it's the first page, create the memory layer from the WFS temp layer.
-            if layer is None:
-                wkb_type = new_layer.wkbType()
-                if wkb_type == QgsWkbTypes.NoGeometry:
-                    wkt = "NoGeometry"
-                elif wkb_type == QgsWkbTypes.Point:
-                    wkt = "Point"
-                elif wkb_type == QgsWkbTypes.MultiPoint:
-                    wkt = "MultiPoint"
-                elif wkb_type == QgsWkbTypes.LineString:
-                    wkt = "LineString"
-                elif wkb_type == QgsWkbTypes.MultiLineString:
-                    wkt = "MultiLineString"
-                elif wkb_type == QgsWkbTypes.Polygon:
-                    wkt = "Polygon"
-                elif wkb_type == QgsWkbTypes.MultiPolygon:
-                    wkt = "MultiPolygon"
-                else:
-                    return
-
-                # layer = QgsVectorLayer(wkt + "?crs=" + crs + "&index=yes", name, "memory")
-                maplayer = QgsLayerDefinition.loadLayerDefinitionLayers(
-                    self.plugin_dir + "/defs/" + self.ontology.value + "/" + name + ".qlr"
-                )
-                if len(maplayer) != 0:
-                    layer = maplayer[0]
-                else:
-                    layer = QgsVectorLayer(
-                        wkt + "?crs=" + crs + "&index=yes", name, "memory"
-                    )
-                # Add fields to layer - if API returns more attributes than qlr definition
-                    
-                layer.dataProvider().addAttributes(
-                    new_layer.dataProvider().fields().toList()
-                )
+            # Add fields to layer - if API returns more attributes than qlr definition
                 
-                QgsProject.instance().addMapLayer(layer, False)
-                group.addLayer(layer)
-                layer.updateFields()
+            layer.dataProvider().addAttributes(
+                new_layer.dataProvider().fields().toList()
+            )
+            
+            QgsProject.instance().addMapLayer(layer, False)
+            group.addLayer(layer)
+            layer.updateFields()
 
-            # Append the temp layer features to the memory layer.
-            layer.startEditing()
+        # Append the temp layer features to the memory layer.
+        layer.startEditing()
 
-            # Append additional fields to API-loaded layer if fields from QLR file is not found
-            qlr_fields = [field for field in layer.fields()]
-            api_fields_name_set = set([field.name() for field in new_layer.fields()])
-            for qlr_field in qlr_fields:
-                if qlr_field.name() not in api_fields_name_set:
-                    field_type = qlr_field.type()
-                    if field_type == QVariant.String:
-                        set_expression = ""
-                    elif field_type == QVariant.Bool:
-                        set_expression = "False"
-                    else:
-                        set_expression = None
-                    new_layer.addExpressionField(set_expression, qlr_field)
+        # Append additional fields to API-loaded layer if fields from QLR file is not found
+        qlr_fields = [field for field in layer.fields()]
+        api_fields_name_set = set([field.name() for field in new_layer.fields()])
+        for qlr_field in qlr_fields:
+            if qlr_field.name() not in api_fields_name_set:
+                field_type = qlr_field.type()
+                if field_type == QVariant.String:
+                    set_expression = ""
+                elif field_type == QVariant.Bool:
+                    set_expression = "False"
+                else:
+                    set_expression = None
+                new_layer.addExpressionField(set_expression, qlr_field)
 
-            success = layer.addFeatures(new_layer.getFeatures())
+        success = layer.addFeatures(new_layer.getFeatures())
 
-            # Remove anchorPoint until new customer requirements
-            attrIndexesToBeRemoved = []
-            anchorIndex = layer.dataProvider().fieldNameIndex("anchorPoint")
-            if anchorIndex != -1:
-                attrIndexesToBeRemoved.append(anchorIndex)
-            if len(attrIndexesToBeRemoved) != 0:
-                result = layer.dataProvider().deleteAttributes(attrIndexesToBeRemoved)
-                layer.updateFields()
-            layer.commitChanges()
+        # Remove anchorPoint until new customer requirements
+        attrIndexesToBeRemoved = []
+        anchorIndex = layer.dataProvider().fieldNameIndex("anchorPoint")
+        if anchorIndex != -1:
+            attrIndexesToBeRemoved.append(anchorIndex)
+        if len(attrIndexesToBeRemoved) != 0:
+            result = layer.dataProvider().deleteAttributes(attrIndexesToBeRemoved)
+            layer.updateFields()
+        layer.commitChanges()
 
-            for feature in layer.getFeatures():
-                id_map[layer.name() + ":" + str(feature.id())] = feature["id"]
-
-            next_link = self.get_next_link(r.json())
-
-            if next_link is None:
-                break
-
-            page += 1
-            progress.set_message("Getting " + name + " collection page " + str(page))
-            r = self.get_url(next_link)
+        for feature in layer.getFeatures():
+            id_map[layer.name() + ":" + str(feature.id())] = feature["id"]
 
         return layer
+
+    def load_items_definition(self, _id, resp):
+        """
+        Load collection definition
+        Save schema map for writing features
+        """
+        response = resp["response"]
+        properties = response["properties"]
+        names = []
+        for attrs in properties:
+            names.append(attrs["name"])
+        self.schema_map[_id] = names
+
+    def load_enums_definition(self, resp, enums_set):
+        """Load enums definition"""
+        response = resp["response"]
+        properties = response.get("properties")
+        attr_name_list, v_layer_list = [], []
+        for attrs in properties:
+            attr_type = attrs.get("type")
+            attr_name = attrs.get("name")
+
+            if not isinstance(attr_type, dict):
+                continue
+            if not isinstance(attr_type.get("array"), dict) and not isinstance(
+                attr_type.get("enum"), list
+            ):
+                continue
+
+            enum_list = attr_type.get(
+                "enum", attr_type.get("array", {}).get("enum")
+            )
+            if not enum_list or not attr_name or attr_name in enums_set:
+                continue
+
+            v_layer = QgsVectorLayer(
+                "None?field=" + attr_name + ":string(0,0)", attr_name, "memory"
+            )
+            QgsProject.instance().addMapLayer(v_layer, False)
+            v_layer.startEditing()
+            for enum_value in enum_list:
+                feature = QgsFeature()
+                feature.setAttributes([enum_value])
+                v_layer.addFeature(feature)
+            v_layer.commitChanges()
+            self.enum_ids[attr_name] = v_layer.id()
+            attr_name_list.append(attr_name)
+            v_layer_list.append(v_layer)
+        return attr_name_list, v_layer_list
+
+    ### Implenented this before but commenting it out for now since not used
+    # def format_response_progress(self, id_list, _id_meta_response_map, _id_data_response_map):
+    #     def _single_response(_id, request_type, response_mapping):
+    #         if _id in response_mapping: return "Done"
+    #         else: return "Fetching {}".format(request_type)
+
+    #     max_id_length = max([len(_id) for _id in id_list]) + 2
+    #     def_string_length = len("Fetching definition")
+    #     response_list = []
+    #     for _id in id_list:
+    #         response_list.append("{:>{max_id_length}} : {:>{def_string_length}}, {}".format(
+    #             _id, 
+    #             _single_response(_id, "definition", _id_meta_response_map),
+    #             _single_response(_id, "data", _id_data_response_map),
+    #             max_id_length=max_id_length, def_string_length=def_string_length
+    #         ))
+    #     return '\n'.join(response_list)
 
     def on_fields_changed(self, layer):
         self.dialogBox.QMessageWarn(
@@ -1405,6 +1395,7 @@ class AzureMapsPlugin:
             5. Apply Updates to QGIS
             5. Handle Error
         """
+        self.logger.QLogInfo("{} Committing Changes {}".format('-'*10, '-'*10))
 
         # ----------------- Check field validity ----------------- #
         self._check_field_validity()
@@ -1535,8 +1526,8 @@ class AzureMapsPlugin:
         # ---------------------- Commit changes to Feature Service ---------------------- #
         # Looping through creates
         for fid, feature, body_str in addCommit:
-            commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=layer.name()) + self.query_string
-            resp = self.apply_url(commit_url, Constants.HTTPS.Methods.POST, body_str)
+            commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=layer.name())
+            resp = self.requestHandler.post_request(url=commit_url, body=body_str)
             if resp["success"]: 
                 layer.addFeature(feature) # Make the commit
             else:
@@ -1544,8 +1535,8 @@ class AzureMapsPlugin:
                 
         # Looping through edits
         for fid, featureId, feature, oldFeature, body_str in editCommit:
-            commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
-            resp = self.apply_url(commit_url, Constants.HTTPS.Methods.PUT, body_str)
+            commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name(), featureId=featureId)
+            resp = self.requestHandler.put_request(url=commit_url, body=body_str)
             if resp["success"]:
                 for newFeatureChange, idx in self._compare_feature_changes(feature, oldFeature).values(): # Make the commit
                     layer.changeAttributeValue(fid, idx, newFeatureChange)
@@ -1556,13 +1547,16 @@ class AzureMapsPlugin:
 
         # Looping through deletes
         for fid, featureId, oldFeature in deleteCommit:
-            commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=layer.name(), featureId=featureId) + self.query_string
-            resp = self.apply_url(commit_url, Constants.HTTPS.Methods.DELETE)
+            commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=layer.name(), featureId=featureId)
+            resp = self.requestHandler.delete_request(url=commit_url)
             if resp["success"]:
                 self.internalDelete = True # Mark delete as internal, to skip function
                 layer.deleteFeature(fid)
             else:
                 failDelete.append((fid, featureId, resp))
+
+        self.logger.QLogInfo("Report for Changes. Adds: {}\tEdits: {}\tDeletes: {}".format(len(addCommit), len(editCommit), len(deleteCommit)))
+        self.logger.QLogInfo("\t\tFailures. Adds: {}\tEdits: {}\tDeletes: {}".format(len(failAdd), len(failEdit), len(failDelete)))
 
         return failAdd, failEdit, failDelete
 
@@ -1587,9 +1581,9 @@ class AzureMapsPlugin:
         """
         Handles the errors from the Feature Service
         """
-        self.logger.writeErrorLogChanges(failAdd, failEdit, failDelete)
         # If any errors, display all of them appropriately
         if (len(failAdd)+len(failDelete)+len(failEdit)>0):
+            self.logger.writeErrorLogChanges(failAdd, failEdit, failDelete)
             error_list = ["Add Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failAdd] + \
                         ["Edit Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failEdit] + \
                         ["Delete Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failDelete]
@@ -1601,62 +1595,6 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
                 detailedText='\n'.join(error_list)
             )
         return
-
-    def apply_url(self, url, request_type, body=None):
-        """Makes a request to the given url with the given request type and body.""" 
-        content_type=None
-        if(request_type == Constants.HTTPS.Methods.GET): method = requests.get
-        elif(request_type == Constants.HTTPS.Methods.POST): 
-            method = requests.post
-            content_type = Constants.HTTPS.Content_type.GEOJSON
-        elif(request_type == Constants.HTTPS.Methods.PUT): 
-            method = requests.put
-            content_type = Constants.HTTPS.Content_type.GEOJSON
-        elif(request_type == Constants.HTTPS.Methods.DELETE): method = requests.delete
-        elif(request_type == Constants.HTTPS.Methods.PATCH): 
-            method = requests.patch
-            content_type = Constants.HTTPS.Content_type.PATCH_JSON
-        headers = {"content-type": content_type} if content_type else {}
-
-        self.logger.QLogInfo(request_type=request_type, url=url)
-        error_text = None
-
-        try:
-            r = method(url, data=body, headers=headers, timeout=60, verify=True)
-        except requests.exceptions.Timeout as err:
-            error_text = "Timeout occurred while sending {} request. Error: {}".format(request_type, str(err))
-        except requests.exceptions.ConnectionError as err:
-            error_text = "Connection error occurred while sending {} request. Error: {}".format(request_type, str(err))
-        except requests.exceptions.RequestException as err:
-            error_text = "Exception occurred while sending {} request. Error: {}".format(request_type, str(err))
-        except Exception as err:
-            error_text = "Unexpected exception occurred while sending {} request. Error: {}".format(request_type, str(err))
-        
-        if error_text:
-            self.logger.QLogCrit(status=Constants.Logs.FAILURE, status_text=error_text)
-            return {
-                "success": False,
-                "error_text": error_text,
-                "response": None
-            }
-
-        # If reponse gives error 
-        if r.status_code not in [200, 201, 204]:
-            error_text = r.json()["error"]["message"]
-            self.logger.QLogCrit(status_code=r.status_code, status_text=error_text)
-            return {
-                "success": False,
-                "error_text": error_text,
-                "response": r
-            }
-        else:
-            # Success!
-            self.logger.QLogInfo(status_code=r.status_code, status_text="Sucess")
-            return {
-                "success": True,
-                "error_text": None,
-                "response": r
-            }
 
     def _get_feature_exporter(self, layer, adds, edits):
         """Prepare Exporter to export features to GeoJSON"""
@@ -1833,13 +1771,6 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
     def _getFeaturesButton_setEnabled(self, boolean):
         self.dlg.getFeaturesButton.setEnabled(boolean)
         self.dlg.getFeaturesButton_2.setEnabled(boolean)
-
-    def get_url(self, url):
-        resp = self.apply_url(url, Constants.HTTPS.Methods.GET)
-        if resp['success']:
-            return resp['response']
-        else:
-            self._progress_base.close()
 
     def hideGroup(self, group):
         if isinstance(group, QgsLayerTreeGroup):

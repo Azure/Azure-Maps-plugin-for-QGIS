@@ -97,3 +97,7 @@ class ProgressIterator:
     def close(self):
         """Closes the progress iterator."""
         self.progress.cancel()
+
+    def value(self):
+        """Returns the current value of the progress bar."""
+        return self.progress.value()

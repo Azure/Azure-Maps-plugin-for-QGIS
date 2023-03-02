@@ -12,12 +12,12 @@ ss = 7 # Max spacing for status column
 
 class AzureMapsPluginLogger:
 
-    def __init__(self, iface, hideSubscriptionKey=True, subscriptionKey=None, 
+    def __init__(self, iface, hideSubscriptionKey=True, subscription_key=None, 
                     dataset_id=None,        
                     autoLogToFile=True, logFolder=None, debugLog=False):
         self.iface = iface
         self.hideSubscriptionKey = hideSubscriptionKey # Hide subscription key in logs
-        self.subscriptionKey = subscriptionKey # Azure Maps Subscription Key
+        self.subscription_key = subscription_key # Azure Maps Subscription Key
         self.dataset_id = dataset_id # Azure Maps Dataset ID
         self.autoLogToFile = autoLogToFile # Boolean to enable automatically log to file
         self.logFolder = logFolder # Folder to save log files
@@ -25,6 +25,12 @@ class AzureMapsPluginLogger:
         self.debugLog = debugLog # Boolean to enable debug log
         self.setupLogFile()
     
+    def set_parameters(self, subscription_key=None, dataset_id=None, logFolder=None):
+        """Set parameters"""
+        if subscription_key: self.set_subscription_key(subscription_key)
+        if dataset_id: self.setDatasetId(dataset_id)
+        if logFolder: self.setLogFolder(logFolder)
+
     def setupLogFile(self):
         """Setup log file names and paths"""
         self.logFileName = self._generateLogFileName()
@@ -49,9 +55,9 @@ class AzureMapsPluginLogger:
         dt_string = now.strftime("%Y-%m-%d %H:%M:%S")
         return dt_string
 
-    def setSubscriptionKey(self, subscriptionKey):
+    def set_subscription_key(self, subscription_key):
         """Set subscription key"""
-        self.subscriptionKey = subscriptionKey
+        self.subscription_key = subscription_key
     
     def setDatasetId(self, dataset_id):
         """Set dataset id"""
@@ -75,23 +81,28 @@ class AzureMapsPluginLogger:
     
     def _hide_subscription_key(self, log_text):
         """Hide subscription key in log text"""
-        if self.hideSubscriptionKey and self.subscriptionKey:
-            sub_key_encoded = "subscription-key={}".format(self.subscriptionKey)
-            sub_key_replace = "subscription-key=***{}".format(self.subscriptionKey[-3:])
+        if self.hideSubscriptionKey and self.subscription_key:
+            sub_key_encoded = "subscription-key={}".format(self.subscription_key)
+            sub_key_replace = "subscription-key=***{}".format(self.subscription_key[-3:])
             log_text = log_text.replace(sub_key_encoded, sub_key_replace)
         return log_text
 
-    def _format_log_text(self, status_code=None, status=None, status_text=None, request_type=None, url=None):
+    def _format_log_text(self, status_code=None, status=None, status_text=None, request_type=None, url=None, text=None):
         """Format log text"""
-        if type(status_text) == dict: status_text = json.dumps(status_text)
-        log_text_format = "{:<{ss}}{sb}{}"
-        if request_type and url:
+        if type(status_text) == dict: status_text = json.dumps(status_text) # Convert status_text json to string
+        # ss = spacing for status, sb = spacing between columns
+        # defined at the top of this file. ss calculated based on the max length of the status code
+        log_text_format = "{:<{ss}}{sb}{}" 
+
+        if request_type and url: # Request logs
             log_text = log_text_format.format(request_type, url, ss=ss, sb=sb)
-        elif status_code and status_text:
+        elif status_code and status_text: # Response logs with status code
             log_text = log_text_format.format(status_code, status_text, ss=ss, sb=sb)
-        elif status and status_text:
+        elif status and status_text: # Response logs with status
             log_text = log_text_format.format(status, status_text, ss=ss, sb=sb)
-        else:
+        elif text: # General logs
+            log_text = log_text_format.format("", text, ss=ss, sb=sb)
+        else: # Invalid log 
             raise Exception("Invalid log text parameters")
         log_text = self._hide_subscription_key(log_text)
         return log_text
@@ -107,22 +118,22 @@ class AzureMapsPluginLogger:
         if self.autoLogToFile:
             self.writeLog(level, log_text)
     
-    def QLogDebug(self, **kwargs):
+    def QLogDebug(self, text=None, **kwargs):
         """Debug Logs"""
         if self.debugLog:
-            self.QLog(Qgis.Info, **kwargs)
+            self.QLog(Qgis.Info, text=text, **kwargs)
 
-    def QLogInfo(self, **kwargs): 
+    def QLogInfo(self, text=None, **kwargs): 
         """Informational Logs"""
-        self.QLog(Qgis.Info, **kwargs)
+        self.QLog(Qgis.Info, text=text, **kwargs)
 
-    def QLogCrit(self, **kwargs): 
+    def QLogCrit(self, text=None, **kwargs): 
         """Critical Logs"""
-        self.QLog(Qgis.Critical, **kwargs)
+        self.QLog(Qgis.Critical, text=text, **kwargs)
 
-    def QLogWarn(self, **kwargs): 
+    def QLogWarn(self, text=None, **kwargs): 
         """Warning Logs"""
-        self.QLog(Qgis.Warning, **kwargs)
+        self.QLog(Qgis.Warning, text=text, **kwargs)
 
     def writeLog(self, level, log_text, logFile=None):
         """Write log to file"""
@@ -151,7 +162,8 @@ class AzureMapsPluginLogger:
             errorLogFilePath = "{}/{}".format(self.errorLogFolderPath, self.errorLogFileName)
         with open(errorLogFilePath, "w") as f:
             json.dump(json_response, f, indent=2)
-        self.QLogCrit(status="Failure", status_text="Error log written to {}".format(errorLogFilePath))
+        # Log error log file path
+        self.QLogInfo(status="Failure", status_text="Error log written to {}".format(errorLogFilePath))
         
     def writeErrorLogChanges(self, failAdd, failEdit, failDelete):
         """
