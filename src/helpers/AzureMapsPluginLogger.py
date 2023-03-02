@@ -171,5 +171,5 @@ class AzureMapsPluginLogger:
         All error responses for changes are combined into one JSON file, per commit session
         """
         allResponses = [self.responseToJSON(r['response'])
-                        for _, _, r in failAdd + failEdit + failDelete]
+                        for _, _, _, r in failAdd + failEdit + failDelete]
         self.writeErrorLog(allResponses)

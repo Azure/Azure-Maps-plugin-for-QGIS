@@ -1,21 +1,21 @@
 # General
 General documentation/comments to run the plugin
 
-## Debugging
-Check [Debugging](./debugging.md) for debugging guidelines 
+## Developer Docs
+Documentation related to developer work
+- [Debugging.md](./developer-docs/debugging.md) - Docs for debugging in QGIS, including setting up test environment and setting up vscode debugger
+- [Logging.md](./developer-docs/logging.md) - Docs to understand Logging setup in QGIS, including enabling debug logs
+- [qtDesigner.md](./developer-docs/qtDesigner.md) - Docs to get started with qtDesigner, used to edit the ui for the plugin.
 
-## Use Test Environment
-- Search for `atlas.microsoft.com` in the file [azure_maps_plugin.py](../src/azure_maps_plugin.py). Add respective code to add test environment.
-- Add Test enivronment option in the file [azure_maps_plugin_dialog_base](../src/ui/azure_maps_plugin_dialog_base.ui)
-    - Under `<widget class="QComboBox" name="geographyDropdown">`, add the following
 
-    ```xml
-    <item>
-        <property name="text">
-        <string>Test</string>
-        </property>
-    </item>
-    ```
+## Workflows
+Documentation related to workflow of the plugin. Each file is a specific workflow
+- [commit-changes-workflow.md](./workflows/commit-changes-workflow.md) - Workflow for commiting changes to Feature Service
 
-## Build Errors
-- In case you get an error similar to `'sphinx-build' is not recognized as an internal or external command`, you might have to install [sphinx](https://www.sphinx-doc.org/en/master/usage/installation.html) using `choco install sphinx`.
+
+## Links
+- [QGIS Plugin Tutorial - gis-ops.com](https://gis-ops.com/qgis-3-plugin-tutorial-plugin-development-reference-guide/) - Excellent guide for introduction to plugin development.
+- [QGIS Plugin Home Page](https://plugins.qgis.org/)
+- [Structuring QGIS Python Plugins](https://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/plugins/plugins.html#structuring-python-plugins)
+- [Building a Python Plugin (QGIS3)](https://www.qgistutorials.com/en/docs/3/building_a_python_plugin.html#building-a-python-plugin-qgis3)
+

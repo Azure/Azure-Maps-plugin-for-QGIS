@@ -209,7 +209,7 @@
         <default applyOnUpdate="0" field="adminDivisions" expression=""/>
       </defaults>
       <constraints>
-        <constraint constraints="1" field="id" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="id" exp_strength="0" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" field="originalId" exp_strength="0" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="1" field="name" exp_strength="0" unique_strength="0" notnull_strength="1"/>
         <constraint constraints="0" field="nameAlt" exp_strength="0" unique_strength="0" notnull_strength="0"/>
@@ -287,7 +287,7 @@ def my_form_open(dialog, layer, feature):
       <editorlayout>generatedlayout</editorlayout>
       <editable>
         <field name="hoursOfOperation" editable="1"/>
-        <field name="id" editable="1"/>
+        <field name="id" editable="0"/>
         <field name="locality" editable="1"/>
         <field name="name" editable="1"/>
         <field name="nameAlt" editable="1"/>

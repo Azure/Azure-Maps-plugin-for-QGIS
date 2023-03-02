@@ -4,8 +4,11 @@ from PyQt5.QtWidgets import *
 
 class ProgressIterator:
     """A class used to generate a progress dialog w/ an iterative method."""
+    
+    width_increase = 250
+    height = 150
 
-    def __init__(self, count=100, msg="", window_title=""):
+    def __init__(self, count=100, msg="", window_title="", setCancelButtonNone=True, disableCloseButton=True, alwaysOnTop=True, setWindowsFlags=None):
         """
         Parameters
         ----------
@@ -27,12 +30,24 @@ class ProgressIterator:
             )
 
         self.count = count
-        self.value = 0
+        self._value = 0
         self.on_cancel_func = None
 
         self.progress = QProgressDialog(msg, "Cancel", 0, count)
         self.progress.setAutoClose(True)
         self.progress.setWindowTitle(window_title)
+        self.progress.setFixedSize(
+            self.progress.width() + self.width_increase, self.height
+        )
+
+        if setCancelButtonNone:
+            self.progress.setCancelButton(None)
+        if disableCloseButton:
+            self.progress.setWindowFlags(Qt.WindowSystemMenuHint)
+        if alwaysOnTop:
+            self.progress.setWindowFlags(Qt.WindowStaysOnTopHint)
+        if setWindowsFlags:
+            self.progress.setWindowFlags(setWindowsFlags)
 
         QApplication.processEvents()
 
@@ -44,12 +59,12 @@ class ProgressIterator:
         msg : str
             The message to show on the progress dialog
         """
-        if self.value >= self.count or self.progress.wasCanceled():
+        if self._value >= self.count or self.progress.wasCanceled():
             return
 
-        self.value += 1
+        self._value += 1
         self.progress.setLabelText(msg)
-        self.progress.setValue(self.value)
+        self.progress.setValue(self._value)
         QApplication.processEvents()
 
     def set_message(self, msg=""):
@@ -101,3 +116,15 @@ class ProgressIterator:
     def value(self):
         """Returns the current value of the progress bar."""
         return self.progress.value()
+    
+    def show(self):
+        """Shows the progress iterator."""
+        self.progress.show()
+    
+    def close(self):
+        """Closes the progress iterator."""
+        self.progress.close()
+
+    def set_maximum(self, value):
+        """Sets the maximum value of the progress bar."""
+        self.progress.setMaximum(value)

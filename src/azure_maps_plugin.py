@@ -98,13 +98,11 @@ class AzureMapsPlugin:
         self.current_index = None
         self.schema_map = {}
         self.new_feature_list = []
-        self.id_map = {}
         self.relation_map = {}
         self.enum_ids = {}
         self.areFieldsValid = {}
         self.areAllFieldsValid = True
         self.base_group = None
-        self._progress_base = None
         self.apiName = Constants.FEATURES
         self.apiVersion = Constants.API_Versions.V20220901PREVIEW
         self.internalDelete = False
@@ -379,14 +377,12 @@ class AzureMapsPlugin:
         self._getFeaturesButton_setEnabled(False)
         self.level_picker.clear()
         dataset_id = self.dlg.datasetId.text()
+        self.id_map = {}
         self._setup_helpers()
         self.logger.QLogInfo("{} Loading Azure Maps dataset with ID: {} {}".format('-'*15, dataset_id, '-'*15))
 
         # Condition: Only one dataset is allowed at a time
-        if (
-            self.current_dataset_id is not None
-            and self.current_dataset_id != dataset_id
-        ):
+        if self.current_dataset_id is not None:
             warning_response = self.dialogBox.QMessageWarn(
                 title="Warning",
                 text="""We can only load one dataset at a time. 
@@ -398,7 +394,9 @@ class AzureMapsPlugin:
             if warning_response == QMessageBox.Cancel:
                 return self._getFeaturesButton_setEnabled(True)
             if warning_response == QMessageBox.Yes:
-                self.root.removeChildNode(self.root.findGroup(self.current_dataset_id))
+                # self.root.removeChildNode(self.root.findGroup(self.current_dataset_id))
+                self.root.removeAllChildren()
+                self.base_group = None
             else:
                 self.msgBar.pushMessage(
                     "Error",
@@ -409,6 +407,7 @@ class AzureMapsPlugin:
                 return self._getFeaturesButton_setEnabled(True)
 
         self.current_dataset_id = dataset_id
+        self.base_group = None
 
         # Determine bounding box.
         bbox = ""
@@ -432,19 +431,10 @@ class AzureMapsPlugin:
 
         # Start progress dialog
         progress = ProgressIterator(
-            msg="Downloading dataset", window_title="Retrieving features..."
+            msg="Loading Dataset...", window_title="Retrieving features",
+            setCancelButtonNone=True, disableCloseButton=True, alwaysOnTop=True
         )
-
-        # Override progress dialog config
-        self._progress_base = progress._get_progress_dialog()
-        self._progress_base.setFixedSize(
-            self._progress_base.width() + 250, 150
-        )
-        self._progress_base.setCancelButton(None)  # Hide cancel button
-        self._progress_base.setWindowFlags(
-            Qt.WindowSystemMenuHint | Qt.WindowStaysOnTopHint
-        )  # Disable close button, always on top
-        self._progress_base.show()  # Immediately show the progress bar
+        progress.show()  # Immediately show the progress bar
         QApplication.processEvents()
 
         # Get dataset metadata.
@@ -470,10 +460,6 @@ class AzureMapsPlugin:
         # Get features from each collection.
         collections = r["collections"]
 
-        if dataset_id not in self.id_map:
-            self.id_map[dataset_id] = {}
-
-        id_map = self.id_map[dataset_id]
         collection_order = Collection.get_order(self.ontology)
 
         other_collections = [
@@ -482,8 +468,13 @@ class AzureMapsPlugin:
         # ! List must be updated if more enums will be exposed in other collections !
         enums_collection = [Constants.COLLECTIONS.CTG, Constants.COLLECTIONS.VRT, Constants.COLLECTIONS.OPN]
 
-        progress_max = 2*(len(collection_order) + len(other_collections)) + 2
-        self._progress_base.setMaximum(progress_max)
+        # Set progress bar max value
+        # We loop through definition and data for each collection, hence the 2*len(collections).
+        # +2 is for other two progress.next statements we have scattered throughout the code.
+        #   - One with "Loading Dataset..." and another with "Adding Creator attributes..."
+        numberOfCollections = len(collections) # Number of collections
+        progress_max = 2*(numberOfCollections) + 2
+        progress.set_maximum(progress_max)
 
         # Clear existing enum layers, if exists
         # Create enum group layer, if not exists
@@ -534,14 +525,14 @@ class AzureMapsPlugin:
         _id_data_response_map = map of collectionName and data responses.
         _id_meta_response_map = map of collectionName and definition responses.
         Response maps are used to store the responses of the tasks
-        All tasks have finished when the length of response maps = number of tasks/2 = number of collections
+        All tasks have finished when the length of response maps = number of collections
 
         Need to use this manual method, instead of QgsTaskManager.countActiveTasks(), since the latter does not work properly with plugins
         neither does QgsTask.isActive() or QgsTask.isCanceled() work properly
         """
-        progress.next("Loading Dataset ...")
+        progress.next("Loading Dataset...")
         _id_data_response_map, _id_meta_response_map = {}, {}
-        while (len(_id_data_response_map) != len(taskList)//2) or (len(_id_meta_response_map) != len(taskList)//2): 
+        while (len(_id_data_response_map) != numberOfCollections) or (len(_id_meta_response_map) != numberOfCollections): 
             for task in taskList:
                 _id, request_type = task.args[0], task.args[1] # Get the collectionName and requestType from the task
                 if request_type == "data": # If the task is a data task
@@ -549,7 +540,7 @@ class AzureMapsPlugin:
                         continue
                     elif task.returned_values is not None: # If the task finished, store the response in response map
                         _id_data_response_map[_id] = task.returned_values
-                        progress.next("Loading Dataset ...")
+                        progress.next("Loading Dataset...")
                     elif task.exception is not None: # If the task failed, store the error in response map
                         error_json = {"error_text":task.exception, "success":False, "response":None}
                         _id_data_response_map[_id] = error_json
@@ -559,7 +550,7 @@ class AzureMapsPlugin:
                         continue
                     elif task.returned_values is not None: # If the task finished, store the response in response map
                         _id_meta_response_map[_id] = task.returned_values
-                        progress.next("Loading Dataset ...")
+                        progress.next("Loading Dataset...")
                     elif task.exception is not None: # If the task failed, store the error in response map
                         error_json = {"error_text":task.exception, "success":False, "response":None}
                         _id_meta_response_map[_id] = error_json
@@ -587,7 +578,7 @@ class AzureMapsPlugin:
                 self.logger.QLogDebug("Unable to read {} collection".format(_id))
                 return
             self.logger.QLogDebug("Loading {} collection".format(_id))
-            layer = self.load_items(_id, data_response, self.base_group, id_map) # Load the data of the collection into a layer
+            layer = self.load_items(_id, data_response, self.base_group) # Load the data of the collection into a layer
             _id_layer_map[_id] = layer
         
         self.logger.QLogInfo("Loading collections successful!")
@@ -630,7 +621,7 @@ class AzureMapsPlugin:
             self._getFeaturesButton_setEnabled(True)
             return
 
-        progress.next("Adding Creator attributes")
+        progress.next("Adding Creator attributes...")
         self.logger.QLogInfo("Adding Creator attributes")
 
         # Populate relational map
@@ -709,7 +700,7 @@ class AzureMapsPlugin:
                 feature.attribute(self.relation_map["facility"]),
             )
             ordinals.append(ordinal)
-        self.add_layer_events(level_layer, id_map)
+        self.add_layer_events(level_layer)
 
         for ordinal in ordinals:
             self.level_picker.append(ordinal)
@@ -750,7 +741,7 @@ class AzureMapsPlugin:
             )
             self.space_to_floors[feature["id"]] = floor
             space_to_ordinals[feature["id"]] = ordinal
-        self.add_layer_events(unit_layer, id_map)
+        self.add_layer_events(unit_layer)
         print('Unit Layer')
 
         # Structure layer
@@ -777,7 +768,7 @@ class AzureMapsPlugin:
                     lvl_index,
                     feature.attribute(self.relation_map["level"]),
                 )
-            self.add_layer_events(structure_layer, id_map)
+            self.add_layer_events(structure_layer)
 
         # Area element layer
         self.logger.QLogDebug("Adding area element layer attributes")
@@ -797,9 +788,7 @@ class AzureMapsPlugin:
             areaElement_layer.changeAttributeValue(
                 feature.id(), unit_index, feature.attribute(self.relation_map["unit"])
             )
-        self.add_floors_values(
-            areaElement_layer, id_map
-        )
+        self.add_floors_values(areaElement_layer)
 
         # Line element layer
         self.logger.QLogDebug("Adding line element layer attributes")
@@ -819,9 +808,7 @@ class AzureMapsPlugin:
             lineElement_layer.changeAttributeValue(
                 feature.id(), unit_index, feature.attribute(self.relation_map["unit"])
             )
-        self.add_floors_values(
-            lineElement_layer, id_map
-        )
+        self.add_floors_values(lineElement_layer)
 
         # Point element layer
         self.logger.QLogDebug("Adding point element layer attributes")
@@ -841,9 +828,7 @@ class AzureMapsPlugin:
             pointElement_layer.changeAttributeValue(
                 feature.id(), unit_index, feature.attribute(self.relation_map["unit"])
             )
-        self.add_floors_values(
-            pointElement_layer, id_map
-        )
+        self.add_floors_values(pointElement_layer)
 
         # Vertical Penetration layer
         self.logger.QLogDebug("Adding vertical penetration layer attributes")
@@ -876,7 +861,7 @@ class AzureMapsPlugin:
                     lvl_index,
                     feature.attribute(self.relation_map["level"]),
                 )
-            self.add_layer_events(verticalPenetration_layer, id_map)
+            self.add_layer_events(verticalPenetration_layer)
 
         # Opening layer
         self.logger.QLogDebug("Adding opening layer attributes")
@@ -910,7 +895,7 @@ class AzureMapsPlugin:
                     lvl_index,
                     feature.attribute(self.relation_map["level"]),
                 )
-            self.add_layer_events(opening_layer, id_map)
+            self.add_layer_events(opening_layer)
 
         # Facility layer
         self.logger.QLogDebug("Adding facility layer attributes")
@@ -933,7 +918,7 @@ class AzureMapsPlugin:
                     dir_index,
                     feature.attribute(self.relation_map["address"]),
                 )
-            self.add_layer_events(facility_layer, id_map)
+            self.add_layer_events(facility_layer)
 
             # Update the layer group name w/ facility_layer name or ID
             self._update_layer_group_name(layer)
@@ -943,12 +928,12 @@ class AzureMapsPlugin:
         if category_layer is not None:
             if self.ontology == Ontology.FACILITY_1:
                 self._set_widget_layer_id(category_layer, "navigableBy")
-            self.add_layer_events(category_layer, id_map)
+            self.add_layer_events(category_layer)
 
         # Directory Info layer
         self.logger.QLogDebug("Adding directory info layer attributes")
         if directoryInfo_layer is not None:
-            self.add_layer_events(directoryInfo_layer, id_map)
+            self.add_layer_events(directoryInfo_layer)
 
         # Zone layer
         self.logger.QLogDebug("Adding zone layer attributes")
@@ -974,7 +959,7 @@ class AzureMapsPlugin:
                     lvl_index,
                     feature.attribute(self.relation_map["level"]),
                 )
-            self.add_layer_events(zone_layer, id_map)
+            self.add_layer_events(zone_layer)
 
         if level_layer is None or unit_layer is None:
             self.msgBar.pushMessage(
@@ -1001,7 +986,7 @@ class AzureMapsPlugin:
 
         self.logger.QLogInfo("{} Datset successfully loaded {}".format('-'*10, '-'*10))
         # Close progress dialog
-        self._progress_base.close()
+        progress.close()
 
     def add_widget(self, layer, fieldName, widgetType, config={}):
         levelsIndex = layer.dataProvider().fieldNameIndex(fieldName)
@@ -1033,7 +1018,7 @@ class AzureMapsPlugin:
         else:
             return floor
 
-    def add_floors_values(self, layer, id_map):
+    def add_floors_values(self, layer):
         if layer is None:
             return False
 
@@ -1048,27 +1033,28 @@ class AzureMapsPlugin:
                 if floor is not None:
                     layer.changeAttributeValue(feature.id(), floor_index, str(floor))
 
-        self.add_layer_events(layer, id_map)
+        self.add_layer_events(layer)
         return True
 
-    def add_layer_events(self, layer, id_map):
+    def add_layer_events(self, layer):
         layer.commitChanges()
         layer.beforeCommitChanges.connect(
-            lambda: self.on_before_commit_changes(layer, id_map)
+            lambda: self.on_before_commit_changes(layer)
         )
         layer.committedFeaturesAdded.connect(
-            lambda: self.committed_features_added(layer, id_map)
+            lambda: self.committed_features_added(layer)
         )
         layer.featuresDeleted.connect(
-            lambda fids: self.on_features_deleted(fids, layer, id_map)
+            lambda fids: self.on_features_deleted(fids, layer)
         )
         layer.featureAdded.connect(lambda fid: self.on_feature_added(fid, layer))
         layer.attributeValueChanged.connect(
             lambda fid: self.on_attributes_changed(fid, layer)
         )
         layer.updatedFields.connect(lambda: self.on_fields_changed(layer))
+        layer.afterCommitChanges.connect(lambda: self.on_after_commit_changes(layer))
 
-    def load_items(self, name, response, group, id_map):
+    def load_items(self, name, response, group):
         layer = None            
         # Load into a new layer, letting OGR take care of GeoJSON details.
         new_layer = QgsVectorLayer(json.dumps(response), "temp", "ogr")
@@ -1144,7 +1130,7 @@ class AzureMapsPlugin:
         layer.commitChanges()
 
         for feature in layer.getFeatures():
-            id_map[layer.name() + ":" + str(feature.id())] = feature["id"]
+            self.id_map[layer.name() + ":" + str(feature.id())] = feature["id"]
 
         return layer
 
@@ -1197,24 +1183,6 @@ class AzureMapsPlugin:
             v_layer_list.append(v_layer)
         return attr_name_list, v_layer_list
 
-    ### Implenented this before but commenting it out for now since not used
-    # def format_response_progress(self, id_list, _id_meta_response_map, _id_data_response_map):
-    #     def _single_response(_id, request_type, response_mapping):
-    #         if _id in response_mapping: return "Done"
-    #         else: return "Fetching {}".format(request_type)
-
-    #     max_id_length = max([len(_id) for _id in id_list]) + 2
-    #     def_string_length = len("Fetching definition")
-    #     response_list = []
-    #     for _id in id_list:
-    #         response_list.append("{:>{max_id_length}} : {:>{def_string_length}}, {}".format(
-    #             _id, 
-    #             _single_response(_id, "definition", _id_meta_response_map),
-    #             _single_response(_id, "data", _id_data_response_map),
-    #             max_id_length=max_id_length, def_string_length=def_string_length
-    #         ))
-    #     return '\n'.join(response_list)
-
     def on_fields_changed(self, layer):
         self.dialogBox.QMessageWarn(
             title="Change fields",
@@ -1241,7 +1209,7 @@ class AzureMapsPlugin:
                     + website
                     + "' is not a valid website, please fix it in the attribute table before continuing to edit.",
                     level=Qgis.Warning,
-                    duration=0,
+                    duration=10,
                 )
                 self.areAllFieldsValid = False
                 return
@@ -1260,7 +1228,7 @@ class AzureMapsPlugin:
                         + layer.name()
                         + " layer, please fix it in the attribute table before continuing to edit.",
                         level=Qgis.Warning,
-                        duration=0,
+                        duration=10,
                     )
                     self.areAllFieldsValid = False
                     return
@@ -1274,7 +1242,7 @@ class AzureMapsPlugin:
                         + layer.name()
                         + " layer, please fix it in the attribute table before continuing to edit.",
                         level=Qgis.Warning,
-                        duration=0,
+                        duration=10,
                     )
                     self.areAllFieldsValid = False
                     return
@@ -1342,7 +1310,7 @@ class AzureMapsPlugin:
                 else:
                     self.areFieldsValid[fid] = True
 
-    def on_features_deleted(self, feature_ids, layer, id_map):
+    def on_features_deleted(self, feature_ids, layer):
         if self.internalDelete:
             self.internalDelete = False
             return
@@ -1356,7 +1324,7 @@ class AzureMapsPlugin:
         for fid in deletes:
             key = layer.name() + ":" + str(fid)
             # raise confirmation dialog for deleting committed features
-            if key in id_map:
+            if key in self.id_map:
                 warning_response = self.dialogBox.QMessageWarn(
                     title = "Deleting Features in {} layer".format(layer.name()),
                     text = "Are you sure to delete these features?",
@@ -1372,16 +1340,22 @@ class AzureMapsPlugin:
                     return
 
     # Use this to access newly created feature after Azure Maps successfully creates a features
-    def committed_features_added(self, layer, id_map):
+    def committed_features_added(self, layer):
         if not self.areAllFieldsValid:
             return
         
         for fid in self.new_feature_list:
-            id_map[layer.name() + ":" + str(fid)] = layer.getFeature(fid)["id"]
+            self.id_map[layer.name() + ":" + str(fid)] = layer.getFeature(fid)["id"]
         
         self.new_feature_list = []
     
-    def on_before_commit_changes(self, layer, id_map):
+    def on_after_commit_changes(self, layer):
+        for feature in layer.getFeatures():
+            if '{}:{}'.format(layer.name(), feature.id()) not in self.id_map:
+                self.id_map['{}:{}'.format(layer.name(), feature.id())] = feature['id']
+
+
+    def on_before_commit_changes(self, layer):
         """
         Signal sent by QGIS when the save button is clicked on Attribute table or commitChanges() is called.
         Runs before the changes are committed to the data provider.
@@ -1395,24 +1369,42 @@ class AzureMapsPlugin:
             5. Apply Updates to QGIS
             5. Handle Error
         """
-        self.logger.QLogInfo("{} Committing Changes {}".format('-'*10, '-'*10))
+        # ----------------- Progress Bar and Logger Setup ----------------- #
+        progress = ProgressIterator( # Setup Progress Bar
+            msg="Validating Changes...", window_title="Committing Changes",
+            setCancelButtonNone=True, disableCloseButton=True, alwaysOnTop=True
+        )
+        progress.show()
+        QApplication.processEvents()
+
+        self.logger.QLogInfo("{} Committing Changes {}".format('-'*10, '-'*10)) # Setup Logger
 
         # ----------------- Check field validity ----------------- #
         self._check_field_validity()
 
         # ----------------- Gathers Edits, Deletes and Creates ----------------- #
-        addCommit, editCommit, deleteCommit = self._consolidate_changes(layer, id_map)
+        addCommit, editCommit, deleteCommit = self._consolidate_changes(layer)
+
+        # ----------------- Update progress bar ----------------- #
+        noOfCommits = len(addCommit) + len(editCommit) + len(deleteCommit)
+        # Max Progress = Total number of commits + 3
+        # +1 is for the progress.next statements used in the commit process outside of commiting the features.
+        #   Namely, "Applying updates to QGIS...", 
+        max_progress = noOfCommits + 1
+        progress.set_maximum(max_progress)
 
         # ---------------------- Rollback Changes ---------------------- #
         layer.editBuffer().rollBack()
 
         # ---------------------- Commit changes to Feature Service ---------------------- #
-        failAdd, failEdit, failDelete = self._commit_changes(layer, addCommit, editCommit, deleteCommit)
+        failAdd, failEdit, failDelete = self._commit_changes(layer, addCommit, editCommit, deleteCommit, progress)
 
         # ---------------------- Handle Updates ---------------------- #
+        progress.next("Applying updates to QGIS...")
         self._apply_updates(layer)
 
         # ---------------------- Handle Error ---------------------- #
+        progress.close()
         self._handle_errors(layer, failAdd, failEdit, failDelete)
 
     def _check_field_validity(self):
@@ -1448,7 +1440,7 @@ class AzureMapsPlugin:
         
         return adds, edits, deletes
 
-    def _consolidate_changes(self, layer, id_map):
+    def _consolidate_changes(self, layer):
         """
         Consolidate changes and return a list of changes to be committed.
 
@@ -1480,8 +1472,8 @@ class AzureMapsPlugin:
             key = layer.name() + ":" + str(fid)
 
             # If ID is a change, take that ID, else take the newly added id
-            if fid > 0 and key in id_map: 
-                temp_id = id_map[key]
+            if fid > 0 and key in self.id_map: 
+                temp_id = self.id_map[key]
                 featureJson = self._export_feature(exporter, feature, temp_id) # Export feature to GeoJSON
                 oldFeature = next(layer.dataProvider().getFeatures(QgsFeatureRequest().setFilterFid(fid)))
                 editCommit.append((fid, temp_id, feature, oldFeature, featureJson))
@@ -1492,7 +1484,7 @@ class AzureMapsPlugin:
         
         # Loop through Deletes
         for fid in deletes:
-            wid = id_map[layer.name() + ":" + str(fid)]
+            wid = self.id_map[layer.name() + ":" + str(fid)]
             oldFeature = next(layer.dataProvider().getFeatures(QgsFeatureRequest().setFilterFid(fid)))
             deleteCommit.append((fid, wid, oldFeature))
 
@@ -1508,7 +1500,7 @@ class AzureMapsPlugin:
                 changes[field.name()] = (newFeature[field.name()], i)
         return changes
 
-    def _commit_changes(self, layer, addCommit, editCommit, deleteCommit):
+    def _commit_changes(self, layer, addCommit, editCommit, deleteCommit, progress):
         """
         Handles commits to the Feature Service.
 
@@ -1528,35 +1520,40 @@ class AzureMapsPlugin:
         for fid, feature, body_str in addCommit:
             commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=layer.name())
             resp = self.requestHandler.post_request(url=commit_url, body=body_str)
+            progress.next("Creating new features...")
             if resp["success"]: 
+                featureId = resp['response'].json()['id']
+                feature.setAttribute('id', featureId)
                 layer.addFeature(feature) # Make the commit
             else:
-                failAdd.append((fid, feature['id'], resp)) # Add to list of failed commits
+                failAdd.append((fid, feature['id'], feature['name'], resp)) # Add to list of failed commits
                 
         # Looping through edits
         for fid, featureId, feature, oldFeature, body_str in editCommit:
             commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name(), featureId=featureId)
             resp = self.requestHandler.put_request(url=commit_url, body=body_str)
+            progress.next("Editing features...")
             if resp["success"]:
                 for newFeatureChange, idx in self._compare_feature_changes(feature, oldFeature).values(): # Make the commit
                     layer.changeAttributeValue(fid, idx, newFeatureChange)
                 layer.changeAttributeValue(fid, layer.fields().indexFromName("id"), featureId) # Since ID cannot be changed, change it back to the original
                 layer.changeGeometry(fid, feature.geometry()) # Update geometry
             else:
-                failEdit.append((fid, featureId, resp))
+                failEdit.append((fid, featureId, feature['name'], resp))
 
         # Looping through deletes
         for fid, featureId, oldFeature in deleteCommit:
             commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=layer.name(), featureId=featureId)
             resp = self.requestHandler.delete_request(url=commit_url)
+            progress.next("Deleting features...")
             if resp["success"]:
                 self.internalDelete = True # Mark delete as internal, to skip function
                 layer.deleteFeature(fid)
             else:
-                failDelete.append((fid, featureId, resp))
+                failDelete.append((fid, featureId, feature['name'], resp))
 
-        self.logger.QLogInfo("Report for Changes. Adds: {}\tEdits: {}\tDeletes: {}".format(len(addCommit), len(editCommit), len(deleteCommit)))
-        self.logger.QLogInfo("\t\tFailures. Adds: {}\tEdits: {}\tDeletes: {}".format(len(failAdd), len(failEdit), len(failDelete)))
+        self.logger.QLogInfo("Report for Changes.\tAdds: {}\tEdits: {}\tDeletes: {}".format(len(addCommit), len(editCommit), len(deleteCommit)))
+        self.logger.QLogInfo("          Failures.\tAdds: {}\tEdits: {}\tDeletes: {}".format(len(failAdd), len(failEdit), len(failDelete)))
 
         return failAdd, failEdit, failDelete
 
@@ -1584,15 +1581,20 @@ class AzureMapsPlugin:
         # If any errors, display all of them appropriately
         if (len(failAdd)+len(failDelete)+len(failEdit)>0):
             self.logger.writeErrorLogChanges(failAdd, failEdit, failDelete)
-            error_list = ["Add Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failAdd] + \
-                        ["Edit Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failEdit] + \
-                        ["Delete Failed \t FeatureId: {} \t Details: {}".format(featureId, resp["error_text"]) for (_, featureId, resp) in failDelete]
+            error_list = ["Add Failed \t Feature name: {} \t Details: {}".format(name, resp["error_text"]) for (_, featureId, name, resp) in failAdd] + \
+                        ["Edit Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(featureId, name, resp["error_text"]) for (_, featureId, name, resp) in failEdit] + \
+                        ["Delete Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(featureId, name, resp["error_text"]) for (_, featureId, name, resp) in failDelete]
             self.dialogBox.QMessageCrit(
                 title="Save Failed!",
                 text="""Your saves to {} layer has failed!
 Edits, deletes or creates have not been saved to your Azure Maps Account.\nPlease fix the issues and try saving again.\n
 Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.errorLogFolderPath, self.logger.errorLogFileName),
                 detailedText='\n'.join(error_list)
+            )
+        else:
+            self.dialogBox.QMessageInfo(
+                title="Save Successful!",
+                text="Your saves to {} layer has been successful!".format(layer.name())
             )
         return
 

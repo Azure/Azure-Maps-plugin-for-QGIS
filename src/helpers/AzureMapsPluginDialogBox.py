@@ -43,15 +43,20 @@ class AzureMapsPluginDialogBox:
     
     def QMessageInfo(self, title, text, informativeText="", detailedText="", buttons=QMessageBox.Ok): 
         """Informational Messages"""
-        self.QMessage(QMessageBox.Information, title=title, text=text, 
+        return self.QMessage(QMessageBox.Information, title=title, text=text, 
         informativeText=informativeText, detailedText=detailedText, buttons=buttons)
     
     def QMessageWarn(self, title, text, informativeText="", detailedText="", buttons=QMessageBox.Ok): 
         """Warning Messages"""
-        self.QMessage(QMessageBox.Warning, title=title, text=text, 
+        return self.QMessage(QMessageBox.Warning, title=title, text=text, 
         informativeText=informativeText, detailedText=detailedText, buttons=buttons)
     
     def QMessageCrit(self, title, text, informativeText="", detailedText="", buttons=QMessageBox.Ok): 
         """Critical Messages"""
-        self.QMessage(QMessageBox.Critical, title=title, text=text, 
+        return self.QMessage(QMessageBox.Critical, title=title, text=text, 
+        informativeText=informativeText, detailedText=detailedText, buttons=buttons)
+
+    def QMessageQuestion(self, title, text, informativeText="", detailedText="", buttons=QMessageBox.Ok): 
+        """Critical Messages"""
+        return self.QMessage(QMessageBox.Question, title=title, text=text, 
         informativeText=informativeText, detailedText=detailedText, buttons=buttons)

@@ -88,11 +88,10 @@ class AzureMapsRequestHandler:
         for key, value in kwargs.items():
             query_params[key] = value
         
-        # Borrowed from here: https://stackoverflow.com/questions/2506379/add-params-to-given-url-in-python
-        url_parts = list(urlparse(url)) # Parse the url
-        qs = dict(parse_qs(url_parts[4])) # Parse the query string
+        url_parts = urlparse(url) # Parse the url
+        qs = dict(parse_qs(url_parts.query)) # Parse the query string
         qs.update(query_params) # Update the query string with the new query parameters. If the query parameter already exists, it will be overwritten
-        url_parts[4] = urlencode(qs, doseq=True) # Encode the query string in URL
+        url_parts = url_parts._replace(query=urlencode(qs, doseq=True)) # Replace the query string with the new query string
 
         return urlunparse(url_parts) # Return the formatted url
 
@@ -134,7 +133,7 @@ class AzureMapsRequestHandler:
                 "error_text": error_text,
                 "response": None
             }
-        elif r.status_code not in [200, 201, 204]: # Error occurred while making the request
+        elif r.status_code < 200 or r.status_code >= 300: # Error status codes
             if not r.text:
                 error_text = "Error occurred while sending {} request.".format(request_type)
             else:
