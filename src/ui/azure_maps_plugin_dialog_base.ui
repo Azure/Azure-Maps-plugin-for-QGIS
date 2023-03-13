@@ -92,6 +92,11 @@
          </item>
          <item>
           <property name="text">
+           <string>Localhost</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
            <string>Europe</string>
           </property>
          </item>

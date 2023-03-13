@@ -16,6 +16,7 @@ class Constants(Facility_2):
         US = "United States"
         EU = "Europe"
         TEST = "Test"
+        LOCALHOST = "Localhost"
 
     class Host:
         US = "https://us.atlas.microsoft.com"

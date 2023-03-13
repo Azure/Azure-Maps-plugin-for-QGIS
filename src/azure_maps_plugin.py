@@ -43,6 +43,7 @@ from .helpers.validation_utility import ValidationUtility
 from .helpers.AzureMapsPluginLogger import AzureMapsPluginLogger
 from .helpers.AzureMapsPluginDialogBox import AzureMapsPluginDialogBox
 from .helpers.AzureMapsRequestHandler import AzureMapsRequestHandler
+from .helpers.AzureMapsMessageBar import AzureMapsMessageBar
 
 from shapely.geometry import mapping, shape
 
@@ -69,8 +70,7 @@ class AzureMapsPlugin:
         self.iface = iface
         self.dlg = AzureMapsPluginDialog(self.iface)
         self.ltv = self.iface.layerTreeView()
-        self.msgBar = self.iface.messageBar()
-        self.pluginToolbar = self.iface.pluginToolBar()
+        self.pluginToolBar = self.iface.pluginToolBar()
         self.model = self.ltv.layerTreeModel()
         self.root = QgsProject.instance().layerTreeRoot()
         # initialize plugin directory
@@ -101,7 +101,7 @@ class AzureMapsPlugin:
         self.relation_map = {}
         self.enum_ids = {}
         self.areFieldsValid = {}
-        self.areAllFieldsValid = True
+        self.saveFailedClasses = set()
         self.base_group = None
         self.apiName = Constants.FEATURES
         self.apiVersion = Constants.API_Versions.V20220901PREVIEW
@@ -124,6 +124,7 @@ class AzureMapsPlugin:
             api_version=self.apiVersion,
             logger=self.logger
         )
+        self.msgBar = AzureMapsMessageBar(self.iface, logger=self.logger)
     
     def _setup_helpers(self):
         """Setup helpers once the parameters are set by the user."""
@@ -138,6 +139,7 @@ class AzureMapsPlugin:
             api_version=self.apiVersion,
             logger=self.logger
         )
+        self.msgBar.set_parameters(logger=self.logger)
 
     def _get_subscription_key(self):
         return self.dlg.sharedKey.text()
@@ -268,7 +270,7 @@ class AzureMapsPlugin:
 
         # Delete toolbar level picker on plugin unload
         if hasattr(self, "toolbar_level_combobox_action"):
-            self.iface.pluginToolBar().removeAction(self.toolbar_level_combobox_action)
+            self.pluginToolBar.removeAction(self.toolbar_level_combobox_action)
 
     def run(self):
         """Run method that performs all the real work"""
@@ -341,15 +343,6 @@ class AzureMapsPlugin:
         self.dlg.creatorStatus.setText(status)
         self.dlg.creatorStatus_2.setText(status)
         QApplication.processEvents()
-
-    def get_request_base(self, url, base_error, progress, **kwargs):
-        """
-        Base function for get requests + error handling
-        Need this mainly for handling errors - stop progress bar and show error message on message bar
-        """
-        resp = self.requestHandler.get_request(url, **kwargs)
-        self._get_request_base_error(resp, base_error, progress) # call error handling function
-        return resp["response"]
     
     def _get_request_base_error(self, resp, base_error, progress):
         """
@@ -358,16 +351,15 @@ class AzureMapsPlugin:
         Stop progress bar
         """
         if resp["error_text"]:
+            error_text = "{} Please try again later. Error: {}".format(base_error, resp["error_text"])
             if "response" in resp and resp["response"]: # status code is available
-                self._apply_progress_error_message(
-                    "{} Response status code {}. Error: {}".format(
-                        base_error, resp["response"].status_code, resp["error_text"]), 
-                        progress, self.msgBar
-                )
-            self._apply_progress_error_message( # status code is not available - generic error
-                "{} Please try again later. Error: {}".format(base_error, resp["error_text"]),
-                progress,
-                self.msgBar,
+                error_text = "{} Response status code {}. Error: {}".format(
+                        base_error, resp["response"].status_code, resp["error_text"])
+            progress.close()
+            self.dialogBox.QMessageCrit(
+                title="Dataset error",
+                text=base_error,
+                detailedText=error_text
             )
             return False
         return True
@@ -398,11 +390,9 @@ class AzureMapsPlugin:
                 self.root.removeAllChildren()
                 self.base_group = None
             else:
-                self.msgBar.pushMessage(
-                    "Error",
-                    "An unexpected error has occurred.",
-                    level=Qgis.Critical,
-                    duration=0,
+                self.msgBar.QMessageBarCrit(
+                    title="Error",
+                    text="An unexpected error has occurred.",
                 )
                 return self._getFeaturesButton_setEnabled(True)
 
@@ -439,11 +429,13 @@ class AzureMapsPlugin:
 
         # Get dataset metadata.
         self.features_url = Constants.API_Paths.BASE.format(host=self.requestHandler.host, apiName=self.apiName, datasetId=dataset_id)
-        r = self.get_request_base(
-            Constants.API_Paths.GET_COLLECTIONS.format(base=self.features_url),
-            "Unable to read dataset metadata.",
-            progress,
-        )
+        resp = self.requestHandler.get_request(Constants.API_Paths.GET_COLLECTIONS.format(base=self.features_url))
+        success = self._get_request_base_error(resp, "Unable to read dataset metadata.", progress) # call error handling function
+        if not success:
+            self._getFeaturesButton_setEnabled(True)
+            return
+        
+        r = resp["response"]
         self.ontology = Ontology(r["ontology"])
 
         # If successful, get all the layers.
@@ -505,7 +497,7 @@ class AzureMapsPlugin:
             )
             QgsApplication.taskManager().addTask(globals()['data_task_'+_id]) # Add task to global queue
             taskList.append(globals()['data_task_'+_id]) # Add task to local list
-            
+
             meta_link = next(link for link in links if link["rel"] == "describedBy")
             globals()['definition_task_'+_id] = QgsTask.fromFunction(
                 "Getting " + _id + " collection definition",
@@ -541,6 +533,7 @@ class AzureMapsPlugin:
                     elif task.returned_values is not None: # If the task finished, store the response in response map
                         _id_data_response_map[_id] = task.returned_values
                         progress.next("Loading Dataset...")
+                        self.msgBar.pop() # Removes the task complete message that comes from QGSTaskManager
                     elif task.exception is not None: # If the task failed, store the error in response map
                         error_json = {"error_text":task.exception, "success":False, "response":None}
                         _id_data_response_map[_id] = error_json
@@ -551,6 +544,7 @@ class AzureMapsPlugin:
                     elif task.returned_values is not None: # If the task finished, store the response in response map
                         _id_meta_response_map[_id] = task.returned_values
                         progress.next("Loading Dataset...")
+                        self.msgBar.pop() # Removes the task complete message that comes from QGSTaskManager
                     elif task.exception is not None: # If the task failed, store the error in response map
                         error_json = {"error_text":task.exception, "success":False, "response":None}
                         _id_meta_response_map[_id] = error_json
@@ -612,11 +606,9 @@ class AzureMapsPlugin:
                 zone_layer = layer
         
         if level_layer is None or len(level_layer) == 0 or unit_layer is None:
-            self.msgBar.pushMessage(
-                "Error",
-                "One or more required collections is missing. Please try again later.",
-                level=Qgis.Critical,
-                duration=0,
+            self.msgBar.QMessageBarCrit(
+                title="Error",
+                text="One or more required collections is missing. Please try again later.",
             )
             self._getFeaturesButton_setEnabled(True)
             return
@@ -962,11 +954,9 @@ class AzureMapsPlugin:
             self.add_layer_events(zone_layer)
 
         if level_layer is None or unit_layer is None:
-            self.msgBar.pushMessage(
-                "Error",
-                "One or more required collections is missing.",
-                level=Qgis.Critical,
-                duration=0,
+            self.msgBar.QMessageBarCrit(
+                title="Error",
+                text="One or more required collections is missing.",
             )
             return
 
@@ -1038,21 +1028,16 @@ class AzureMapsPlugin:
 
     def add_layer_events(self, layer):
         layer.commitChanges()
-        layer.beforeCommitChanges.connect(
-            lambda: self.on_before_commit_changes(layer)
-        )
-        layer.committedFeaturesAdded.connect(
-            lambda: self.committed_features_added(layer)
-        )
-        layer.featuresDeleted.connect(
-            lambda fids: self.on_features_deleted(fids, layer)
-        )
-        layer.featureAdded.connect(lambda fid: self.on_feature_added(fid, layer))
-        layer.attributeValueChanged.connect(
-            lambda fid: self.on_attributes_changed(fid, layer)
-        )
+        layer.beforeCommitChanges.connect(lambda: self.on_before_commit_changes(layer))
+        layer.featuresDeleted.connect(lambda fids: self.on_features_deleted(fids, layer))
+        layer.featureAdded.connect(lambda fid: self.on_feature_added_or_changed(fid, layer))
+        layer.attributeValueChanged.connect( lambda fid: self.on_feature_added_or_changed(fid, layer) )
         layer.updatedFields.connect(lambda: self.on_fields_changed(layer))
         layer.afterCommitChanges.connect(lambda: self.on_after_commit_changes(layer))
+        layer.beforeRollBack.connect(lambda: self.on_before_rollBack(layer))
+
+    def on_before_rollBack(self, layer):
+        self._handle_error_msgBar(layer.name(), False)
 
     def load_items(self, name, response, group):
         layer = None            
@@ -1191,122 +1176,47 @@ class AzureMapsPlugin:
                             Otherwise, you may experience failures on saving your data.""",
         )
 
-    def on_feature_added(self, fid, layer):
+    def on_feature_added_or_changed(self, fid, layer):
         feature = layer.getFeature(fid)
         websiteIndex = feature.fieldNameIndex("website")
         nameIndex = feature.fieldNameIndex("name")
         setIdIndex = feature.fieldNameIndex("setId")
         if websiteIndex != -1:
             website = str(feature.attribute("website") or "")
-            if (
-                website
-                and website != "NULL"
-                and not ValidationUtility.validateWebsite(website)
-            ):
-                self.msgBar.pushMessage(
-                    "Warning",
-                    "'"
-                    + website
-                    + "' is not a valid website, please fix it in the attribute table before continuing to edit.",
-                    level=Qgis.Warning,
-                    duration=10,
-                )
-                self.areAllFieldsValid = False
-                return
-        if nameIndex != -1:
-            if (
-                layer.name() == "category"
-                or layer.name() == "directoryInfo"
-                or layer.name() == "unit"
-                or layer.name() == "level"
-            ):
-                name = str(feature.attribute("name") or "")
-                if not (name and name.strip()) or name == "NULL":
-                    self.msgBar.pushMessage(
-                        "Warning",
-                        "'name' cannot be null or empty on "
-                        + layer.name()
-                        + " layer, please fix it in the attribute table before continuing to edit.",
-                        level=Qgis.Warning,
-                        duration=10,
-                    )
-                    self.areAllFieldsValid = False
-                    return
-        if setIdIndex != -1:
-            if layer.name() == "zone" or layer.name() == "verticalPenetration":
-                setId = str(feature.attribute("setId") or "")
-                if not (setId and setId.strip()) or setId == "NULL":
-                    self.msgBar.pushMessage(
-                        "Warning",
-                        "'setId' cannot be null or empty on "
-                        + layer.name()
-                        + " layer, please fix it in the attribute table before continuing to edit.",
-                        level=Qgis.Warning,
-                        duration=10,
-                    )
-                    self.areAllFieldsValid = False
-                    return
-
-    def on_attributes_changed(self, fid, layer):
-        feature = layer.getFeature(fid)
-        websiteIndex = feature.fieldNameIndex("website")
-        nameIndex = feature.fieldNameIndex("name")
-        setIdIndex = feature.fieldNameIndex("setId")
-        if websiteIndex != -1:
-            website = str(feature.attribute("website") or "")
-            if (
-                website
-                and website != "NULL"
-                and not ValidationUtility.validateWebsite(website)
-            ):
-                self.msgBar.pushMessage(
-                    "Warning",
-                    "'"
-                    + website
-                    + "' is not a valid website, please fix it in the attribute table before continuing to edit.",
-                    level=Qgis.Warning,
-                    duration=0,
+            if ( website and website != "NULL" and not ValidationUtility.validateWebsite(website)):
+                self.msgBar.QMessageBarWarn(
+                    title="Warning",
+                    text="'{}' is not a valid website.".format( website ),
+                    duration=10
                 )
                 self.areFieldsValid[fid] = False
+                return
             else:
                 self.areFieldsValid[fid] = True
         if nameIndex != -1:
-            if (
-                layer.name() == "category"
-                or layer.name() == "directoryInfo"
-                or layer.name() == "unit"
-                or layer.name() == "level"
-            ):
-                if feature.attribute("name") is None:
-                    return
+            if ( layer.name() in ["category", "directoryInfo", "unit", "level"]):
                 name = str(feature.attribute("name") or "")
                 if not (name and name.strip()) or name == "NULL":
-                    self.msgBar.pushMessage(
-                        "Warning",
-                        "'name' cannot be null or empty on "
-                        + layer.name()
-                        + " layer, please fix it in the attribute table before continuing to edit.",
-                        level=Qgis.Warning,
-                        duration=0,
+                    self.msgBar.QMessageBarWarn(
+                        title="Warning",
+                        text="'name' cannot be null or empty on {} layer".format(layer.name()),
+                        duration=10
                     )
                     self.areFieldsValid[fid] = False
+                    return
                 else:
                     self.areFieldsValid[fid] = True
         if setIdIndex != -1:
-            if layer.name() == "zone" or layer.name() == "verticalPenetration":
-                if feature.attribute("setId") is None:
-                    return
+            if layer.name() in ["zone", "verticalPenetration"]:
                 setId = str(feature.attribute("setId") or "")
                 if not (setId and setId.strip()) or setId == "NULL":
-                    self.msgBar.pushMessage(
-                        "Warning",
-                        "'setId' cannot be null or empty on "
-                        + layer.name()
-                        + " layer, please fix it in the attribute table before continuing to edit.",
-                        level=Qgis.Warning,
-                        duration=0,
+                    self.msgBar.QMessageBarWarn(
+                        title="Warning",
+                        text="'setId' cannot be null or empty on {} layer".format(layer.name()),
+                        duration=10
                     )
                     self.areFieldsValid[fid] = False
+                    return
                 else:
                     self.areFieldsValid[fid] = True
 
@@ -1338,21 +1248,28 @@ class AzureMapsPlugin:
                     return
                 elif warning_response == QMessageBox.Yes:
                     return
-
-    # Use this to access newly created feature after Azure Maps successfully creates a features
-    def committed_features_added(self, layer):
-        if not self.areAllFieldsValid:
-            return
-        
-        for fid in self.new_feature_list:
-            self.id_map[layer.name() + ":" + str(fid)] = layer.getFeature(fid)["id"]
-        
-        self.new_feature_list = []
     
     def on_after_commit_changes(self, layer):
         for feature in layer.getFeatures():
             if '{}:{}'.format(layer.name(), feature.id()) not in self.id_map:
                 self.id_map['{}:{}'.format(layer.name(), feature.id())] = feature['id']
+
+        for _, feature, _ in self.failAdd:
+            layer.addFeature(feature)
+                
+        # Looping through edits
+        for _, (feature, oldFeature), _ in self.failEdit:
+            fid, featureId = feature.id(), feature["id"]
+            for newFeatureChange, idx in self._compare_feature_changes(feature, oldFeature).values(): # Make the commit
+                layer.changeAttributeValue(fid, idx, newFeatureChange)
+            layer.changeAttributeValue(fid, layer.fields().indexFromName("id"), featureId) # Since ID cannot be changed, change it back to the original
+            layer.changeGeometry(fid, feature.geometry()) # Update geometry
+
+        # Looping through deletes
+        for _, oldFeature, _ in self.failDelete:
+            layer.addFeature(oldFeature)
+
+        self.failAdd, self.failEdit, self.failDelete = [], [], []
 
 
     def on_before_commit_changes(self, layer):
@@ -1397,7 +1314,7 @@ class AzureMapsPlugin:
         layer.editBuffer().rollBack()
 
         # ---------------------- Commit changes to Feature Service ---------------------- #
-        failAdd, failEdit, failDelete = self._commit_changes(layer, addCommit, editCommit, deleteCommit, progress)
+        self.failAdd, self.failEdit, self.failDelete = self._commit_changes(layer, addCommit, editCommit, deleteCommit, progress)
 
         # ---------------------- Handle Updates ---------------------- #
         progress.next("Applying updates to QGIS...")
@@ -1405,23 +1322,25 @@ class AzureMapsPlugin:
 
         # ---------------------- Handle Error ---------------------- #
         progress.close()
-        self._handle_errors(layer, failAdd, failEdit, failDelete)
+        self._handle_errors(layer, self.failAdd, self.failEdit, self.failDelete)
 
     def _check_field_validity(self):
         """Check validity of fields. Throw Error if not valid."""
         # Check if all fields are valid (when edits happen, fields can become invalid)
+        areAllFieldsValid = True
         if len(self.areFieldsValid) > 0:
-            self.areAllFieldsValid = True
             for v in self.areFieldsValid.values():
-                self.areAllFieldsValid &= v
+                areAllFieldsValid &= v
 
         # areAllFieldsValid is an instance variable used in methods like on_features_added
         # Ensures that Field validation is successful.
-        if not self.areAllFieldsValid:
+        if not areAllFieldsValid:
             self.dialogBox.QMessageCrit(
                 title="Field validation failed", 
                 text="Some fields you provided are not valid. Please correct them before saving the feature.",
                 detailedText="Some fields you provided are not valid. See Logs for more details.")
+            return False
+        return True
 
     def _get_changes(self, layer):
         """ Gather Creates, Edits and Deletes"""
@@ -1526,11 +1445,11 @@ class AzureMapsPlugin:
                 feature.setAttribute('id', featureId)
                 layer.addFeature(feature) # Make the commit
             else:
-                failAdd.append((fid, feature['id'], feature['name'], resp)) # Add to list of failed commits
+                failAdd.append((fid, feature, resp)) # Add to list of failed commits
                 
         # Looping through edits
         for fid, featureId, feature, oldFeature, body_str in editCommit:
-            commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name(), featureId=featureId)
+            commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name()+"45", featureId=featureId)
             resp = self.requestHandler.put_request(url=commit_url, body=body_str)
             progress.next("Editing features...")
             if resp["success"]:
@@ -1539,7 +1458,7 @@ class AzureMapsPlugin:
                 layer.changeAttributeValue(fid, layer.fields().indexFromName("id"), featureId) # Since ID cannot be changed, change it back to the original
                 layer.changeGeometry(fid, feature.geometry()) # Update geometry
             else:
-                failEdit.append((fid, featureId, feature['name'], resp))
+                failEdit.append((fid, (feature, oldFeature), resp))
 
         # Looping through deletes
         for fid, featureId, oldFeature in deleteCommit:
@@ -1550,7 +1469,7 @@ class AzureMapsPlugin:
                 self.internalDelete = True # Mark delete as internal, to skip function
                 layer.deleteFeature(fid)
             else:
-                failDelete.append((fid, featureId, feature['name'], resp))
+                failDelete.append((fid, oldFeature, resp))
 
         self.logger.QLogInfo("Report for Changes.\tAdds: {}\tEdits: {}\tDeletes: {}".format(len(addCommit), len(editCommit), len(deleteCommit)))
         self.logger.QLogInfo("          Failures.\tAdds: {}\tEdits: {}\tDeletes: {}".format(len(failAdd), len(failEdit), len(failDelete)))
@@ -1580,23 +1499,45 @@ class AzureMapsPlugin:
         """
         # If any errors, display all of them appropriately
         if (len(failAdd)+len(failDelete)+len(failEdit)>0):
-            self.logger.writeErrorLogChanges(failAdd, failEdit, failDelete)
-            error_list = ["Add Failed \t Feature name: {} \t Details: {}".format(name, resp["error_text"]) for (_, featureId, name, resp) in failAdd] + \
-                        ["Edit Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(featureId, name, resp["error_text"]) for (_, featureId, name, resp) in failEdit] + \
-                        ["Delete Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(featureId, name, resp["error_text"]) for (_, featureId, name, resp) in failDelete]
+            self.logger.writeErrorLogChanges([r['response'] for _, _, r in failAdd + failEdit + failDelete])
+            error_list = ["Add Failed \t Feature name: {} \t Details: {}".format(feature['name'], resp["error_text"]) for (_, feature, resp) in failAdd] + \
+                        ["Edit Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(feature['id'], feature['name'], resp["error_text"]) 
+                            for (_, (feature, _), resp) in failEdit] + \
+                        ["Delete Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(feature['id'], feature['name'], resp["error_text"]) 
+                         for (_, feature, resp) in failDelete]
             self.dialogBox.QMessageCrit(
                 title="Save Failed!",
-                text="""Your saves to {} layer has failed!
-Edits, deletes or creates have not been saved to your Azure Maps Account.\nPlease fix the issues and try saving again.\n
-Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.errorLogFolderPath, self.logger.errorLogFileName),
-                detailedText='\n'.join(error_list)
+                text="""Some or all of your saves to {} layer have failed!<br/>
+Your changes are still present in QGIS. Please fix the issues and try saving again.<br/>
+Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.errorLogFilePath, self.logger.errorLogFileName),
+                detailedText='\n'.join(error_list),
+                width = 500, height = 500
             )
+            self._handle_error_msgBar(layer.name(), is_fail=True)
         else:
             self.dialogBox.QMessageInfo(
                 title="Save Successful!",
                 text="Your saves to {} layer has been successful!".format(layer.name())
             )
+            self._handle_error_msgBar(layer.name(), is_fail=False)
         return
+    
+    def _handle_error_msgBar(self, layer_name, is_fail):
+        """Handle the error display in message bar"""
+        if is_fail: # If there is a failure, add to list of failed classes
+            self.saveFailedClasses.add(layer_name)
+        else: # If there is no failure, remove from list of failed classes
+            self.saveFailedClasses.discard(layer_name)
+        if self.saveFailedClasses: # If there are any failed classes, display the message bar
+            saveFailedStrings = ['"{}"'.format(f) for f in self.saveFailedClasses]
+            self.msgBar.QMessageBarPopPushCrit(
+                title="Save Failed!",
+                text="Your saves in {} layer(s) are still pending".format(', '.join(saveFailedStrings)),
+                item_id="save_failed",
+                showMore = """Your changes are still present in QGIS. Please fix the issues and try saving again.
+Logs can be found at {}""".format(self.logger.errorLogFolderPath))
+        else:
+            self.msgBar.pop(item_id="save_failed")
 
     def _get_feature_exporter(self, layer, adds, edits):
         """Prepare Exporter to export features to GeoJSON"""
@@ -1756,7 +1697,7 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
         self.toolbar_level_picker = QComboBox(self.iface.mainWindow())
         self.toolbar_level_picker.setToolTip("Azure Maps Level Control")
         self.toolbar_level_picker.currentIndexChanged.connect(self.floor_picker_changed)
-        self.toolbar_level_combobox_action = self.iface.pluginToolBar().addWidget(
+        self.toolbar_level_combobox_action = self.pluginToolBar.addWidget(
             self.toolbar_level_picker
         )
         self.level_picker = LevelPicker(
@@ -1819,11 +1760,6 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
             self.base_group.setName(str(facility_name) + " | " + str(dataset_id))
         else:
             self.base_group.setName(str(dataset_id))
-
-    def _apply_progress_error_message(self, error_message, progress, messageBar):
-        messageBar.pushMessage("Error", error_message, level=Qgis.Critical, duration=0)
-        progress.close()
-        self._getFeaturesButton_setEnabled(True)
 
 def get_depth(collection_name, references):
     ref_list = references.get(collection_name, None)

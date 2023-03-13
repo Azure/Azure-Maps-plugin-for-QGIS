@@ -72,7 +72,10 @@ class AzureMapsRequestHandler:
 
     def _format_url(self, url, query_params={}, **kwargs):
         """Formats the url with the given query parameters"""
-        if not url: return None  
+        if not url: return None
+        if self.geography == Constants.Geography.LOCALHOST:
+            url = url.replace("https", "http", 1)
+
         # Replace url parts according to the geography
         if self.geography == Constants.Geography.US:
             url = url.replace("//atlas.microsoft.com", "//us.atlas.microsoft.com")
@@ -80,6 +83,8 @@ class AzureMapsRequestHandler:
             url = url.replace("//atlas.microsoft.com", "//eu.atlas.microsoft.com")
         elif self.geography == Constants.Geography.TEST:
             url = url.replace("//atlas.microsoft.com", "//us.t-azmaps.azurelbs.com")
+        elif self.geography == Constants.Geography.LOCALHOST:
+            url = url.replace("//atlas.microsoft.com", "//localhost:3000")
         
         # Add the subscription key and api version to the query parameters
         query_params["subscription-key"] = self.subscription_key
@@ -115,9 +120,10 @@ class AzureMapsRequestHandler:
         elif(request_type == Constants.HTTPS.Methods.PATCH): method = requests.patch
         else : raise Exception("Invalid request type")
         headers = {"content-type": content_type} if content_type else {} # Set the headers
+        verify_ssl = False if self.geography == Constants.Geography.LOCALHOST else True
 
         try:
-            r = method(url, data=body, headers=headers, timeout=60, verify=True) # Make the request
+            r = method(url, data=body, headers=headers, timeout=60, verify=verify_ssl) # Make the request
         except requests.exceptions.Timeout as err:
             error_text = "Timeout occurred while sending {} request. Error: {}".format(request_type, str(err))
         except requests.exceptions.ConnectionError as err:

@@ -20,7 +20,9 @@ class AzureMapsPluginDialogBox:
         minSize=500,
         windowFlags=Qt.WindowStaysOnTopHint,
         windowTitle=None,
-        execute=True
+        execute=True,
+        width=None,
+        height=None
     ):
         """Custom QGIS Message Dialog Box"""
         
@@ -38,25 +40,30 @@ class AzureMapsPluginDialogBox:
         spacer = QSpacerItem(minSize, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
         layout.addItem(spacer, layout.rowCount(), 0, 1, layout.columnCount())
 
+        # Set definitie width and height, if specified.
+        if width or height: 
+            width_string = "width: {}px;".format(width) if width else None
+            height_string = "height: {}px;".format(height) if height else None
+            all_strings = [width_string, height_string]
+            all_strings_valid = [s for s in all_strings if s]
+            valid_str = '; '.join(all_strings_valid) # Format should be "QLabel{width: 500px; height: 500px; }"
+            msg.setStyleSheet("QLabel{ " + valid_str + " }")
+
         if execute: return msg.exec()
         return msg
     
-    def QMessageInfo(self, title, text, informativeText="", detailedText="", buttons=QMessageBox.Ok): 
+    def QMessageInfo(self, **kwargs): 
         """Informational Messages"""
-        return self.QMessage(QMessageBox.Information, title=title, text=text, 
-        informativeText=informativeText, detailedText=detailedText, buttons=buttons)
+        return self.QMessage(QMessageBox.Information, **kwargs)
     
-    def QMessageWarn(self, title, text, informativeText="", detailedText="", buttons=QMessageBox.Ok): 
+    def QMessageWarn(self, **kwargs): 
         """Warning Messages"""
-        return self.QMessage(QMessageBox.Warning, title=title, text=text, 
-        informativeText=informativeText, detailedText=detailedText, buttons=buttons)
+        return self.QMessage(QMessageBox.Warning, **kwargs)
     
-    def QMessageCrit(self, title, text, informativeText="", detailedText="", buttons=QMessageBox.Ok): 
+    def QMessageCrit(self, **kwargs): 
         """Critical Messages"""
-        return self.QMessage(QMessageBox.Critical, title=title, text=text, 
-        informativeText=informativeText, detailedText=detailedText, buttons=buttons)
+        return self.QMessage(QMessageBox.Critical, **kwargs)
 
-    def QMessageQuestion(self, title, text, informativeText="", detailedText="", buttons=QMessageBox.Ok): 
+    def QMessageQuestion(self, **kwargs): 
         """Critical Messages"""
-        return self.QMessage(QMessageBox.Question, title=title, text=text, 
-        informativeText=informativeText, detailedText=detailedText, buttons=buttons)
+        return self.QMessage(QMessageBox.Question, **kwargs)

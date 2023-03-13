@@ -8,8 +8,8 @@ Check the file [Debugger-VSCode](./debugger-vscode.md) to learn how to debug wit
 For other IDEs, please check this link [QGIS IDE Debugging](https://docs.qgis.org/3.22/en/docs/pyqgis_developer_cookbook/plugins/ide_debugging.html)
 
 ## Use Test Environment
-- Search for `atlas.microsoft.com` in the file [azure_maps_plugin.py](../src/azure_maps_plugin.py). Add respective code to add test environment.
-- Add Test enivronment option in the file [azure_maps_plugin_dialog_base](../src/ui/azure_maps_plugin_dialog_base.ui)
+- Search for `atlas.microsoft.com` in the file [AzureMapsRequestHandler.py](../../src/helpers/AzureMapsRequestHandler.py). Add respective code to add test environment.
+- Add Test enivronment option in the file [azure_maps_plugin_dialog_base](../../src/ui/azure_maps_plugin_dialog_base.ui)
     - Under `<widget class="QComboBox" name="geographyDropdown">`, add the following
 
     ```xml
@@ -19,6 +19,20 @@ For other IDEs, please check this link [QGIS IDE Debugging](https://docs.qgis.or
         </property>
     </item>
     ```
+
+## Use Localhost
+- Search for `atlas.microsoft.com` in the file [AzureMapsRequestHandler.py](../../src/helpers/AzureMapsRequestHandler.py). Add respective code to add localhost.
+- Add Localhost enivronment option in the file [azure_maps_plugin_dialog_base](../../src/ui/azure_maps_plugin_dialog_base.ui)
+    - Under `<widget class="QComboBox" name="geographyDropdown">`, add the following
+
+    ```xml
+    <item>
+        <property name="text">
+        <string>Localhost</string>
+        </property>
+    </item>
+    ```
+- **Note:** Using "http" with localhost instead of "https" has already been handled in [AzureMapsRequestHandler.py](../../src/helpers/AzureMapsRequestHandler.py)
 
 ## Build Errors
 - In case you get an error similar to `'sphinx-build' is not recognized as an internal or external command`, you might have to install [sphinx](https://www.sphinx-doc.org/en/master/usage/installation.html) using `choco install sphinx`.

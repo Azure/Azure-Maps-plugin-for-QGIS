@@ -145,12 +145,15 @@ class AzureMapsPluginLogger:
 
     def responseToJSON(self, response):
         """Convert response to JSON for logging"""
+        body = None
+        if response.request.body:
+            body = json.loads(response.request.body)
         return {
             'request': {
                 'url': self._hide_subscription_key(response.request.url),
                 'method': response.request.method,
                 'headers': dict(response.request.headers),
-                'body': json.loads(response.request.body),
+                'body': body,
             },
             'response': response.json()
         }
@@ -159,17 +162,15 @@ class AzureMapsPluginLogger:
         """Write error logs to file"""
         if not errorLogFilePath: 
             self.errorLogFileName = self._generateErrorLogFileName()
-            errorLogFilePath = "{}/{}".format(self.errorLogFolderPath, self.errorLogFileName)
-        with open(errorLogFilePath, "w") as f:
+            self.errorLogFilePath = "{}/{}".format(self.errorLogFolderPath, self.errorLogFileName)
+        with open(self.errorLogFilePath, "w") as f:
             json.dump(json_response, f, indent=2)
         # Log error log file path
-        self.QLogInfo(status="Failure", status_text="Error log written to {}".format(errorLogFilePath))
+        self.QLogInfo(status="Failure", status_text="Error log written to {}".format(self.errorLogFilePath))
         
-    def writeErrorLogChanges(self, failAdd, failEdit, failDelete):
+    def writeErrorLogChanges(self, responseList):
         """
         Write error logs to file for all changes
         All error responses for changes are combined into one JSON file, per commit session
         """
-        allResponses = [self.responseToJSON(r['response'])
-                        for _, _, _, r in failAdd + failEdit + failDelete]
-        self.writeErrorLog(allResponses)
+        self.writeErrorLog([self.responseToJSON(response) for response in responseList])
