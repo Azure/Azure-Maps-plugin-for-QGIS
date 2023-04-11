@@ -33,5 +33,10 @@ class Collection:
                 "level",
                 "facility",
             ]
+        elif ontology == Ontology.CUSTOM or ontology == Ontology.NOONTOLOGY:
+            return [
+                "facility",
+                "level",
+            ]
         else:
             return []

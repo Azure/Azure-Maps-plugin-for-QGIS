@@ -1,10 +1,12 @@
+import inspect
 import json
 import requests
+import time
 from urllib.parse import parse_qs, urlparse, urlencode, urlunparse
 
 from .Constants import Constants
 
-class AzureMapsRequestHandler:
+class AzureMapsPluginRequestHandler:
     """
     Handles the requests to Azure Maps
     Outputs formatted response
@@ -12,7 +14,7 @@ class AzureMapsRequestHandler:
     Includes logging requests and responses
     """
 
-    def __init__(self, subscription_key=None, geography=Constants.Geography.US, api_version=Constants.API_Versions.V20220901PREVIEW, logger=None):
+    def __init__(self, subscription_key=None, geography=Constants.Geography.US, api_version=Constants.API_Versions.V20230301PREVIEW, logger=None):
         self.subscription_key = subscription_key
         self.geography = geography
         self.api_version = api_version
@@ -66,15 +68,13 @@ class AzureMapsRequestHandler:
                 self.logger.QLogInfo(status_code=resp["response"].status_code, status_text=Constants.Logs.SUCCESS)
             else: # Log Failure Response
                 if resp["response"]:
-                    self.logger.QLogCrit(status_code=resp["response"].status_code, status_text=resp["error_text"])
+                    self.logger.QLogCrit(status_code=resp["response"].status_code, status_text=resp["error_text"], inspect_frame=inspect.currentframe())
                 else:
-                    self.logger.QLogCrit(status=Constants.Logs.FAILURE, status_text=resp["error_text"])
+                    self.logger.QLogCrit(status=Constants.Logs.FAILURE, status_text=resp["error_text"], inspect_frame=inspect.currentframe())
 
     def _format_url(self, url, query_params={}, **kwargs):
         """Formats the url with the given query parameters"""
         if not url: return None
-        if self.geography == Constants.Geography.LOCALHOST:
-            url = url.replace("https", "http", 1)
 
         # Replace url parts according to the geography
         if self.geography == Constants.Geography.US:
@@ -85,6 +85,7 @@ class AzureMapsRequestHandler:
             url = url.replace("//atlas.microsoft.com", "//us.t-azmaps.azurelbs.com")
         elif self.geography == Constants.Geography.LOCALHOST:
             url = url.replace("//atlas.microsoft.com", "//localhost:3000")
+            url = url.replace("https", "http", 1) # Replace first instance of https with http
         
         # Add the subscription key and api version to the query parameters
         query_params["subscription-key"] = self.subscription_key
@@ -122,45 +123,56 @@ class AzureMapsRequestHandler:
         headers = {"content-type": content_type} if content_type else {} # Set the headers
         verify_ssl = False if self.geography == Constants.Geography.LOCALHOST else True
 
-        try:
-            r = method(url, data=body, headers=headers, timeout=60, verify=verify_ssl) # Make the request
-        except requests.exceptions.Timeout as err:
-            error_text = "Timeout occurred while sending {} request. Error: {}".format(request_type, str(err))
-        except requests.exceptions.ConnectionError as err:
-            error_text = "Connection error occurred while sending {} request. Error: {}".format(request_type, str(err))
-        except requests.exceptions.RequestException as err:
-            error_text = "Exception occurred while sending {} request. Error: {}".format(request_type, str(err))
-        except Exception as err:
-            error_text = "Unexpected exception occurred while sending {} request. Error: {}".format(request_type, str(err))
-        
-        if error_text: # Error occurred before the request was made
-            resp = {
-                "success": False,
-                "error_text": error_text,
-                "response": None
-            }
-        elif r.status_code < 200 or r.status_code >= 300: # Error status codes
-            if not r.text:
-                error_text = "Error occurred while sending {} request.".format(request_type)
-            else:
-                error_text = r.json()["error"]["message"]
-                
-            resp = {
-                "success": False,
-                "error_text": error_text,
-                "response": r
-            }
-        else: # Success!
-            resp = {
-                "success": True,
-                "error_text": None,
-                "response": r
-            }   
+        retry, retry_counter = True, 0
+
+        while retry:
+            try:
+                r = method(url, data=body, headers=headers, timeout=60, verify=verify_ssl) # Make the request
+            except requests.exceptions.Timeout as err:
+                error_text = "Timeout occurred while sending {} request. Error: {}".format(request_type, str(err))
+            except requests.exceptions.ConnectionError as err:
+                error_text = "Connection error occurred while sending {} request. Error: {}".format(request_type, str(err))
+            except requests.exceptions.RequestException as err:
+                error_text = "Exception occurred while sending {} request. Error: {}".format(request_type, str(err))
+            except Exception as err:
+                error_text = "Unexpected exception occurred while sending {} request. Error: {}".format(request_type, str(err))
+            
+            retry = False # No need to retry, except in case of error
+            if error_text: # Error occurred before the request was made
+                resp = {
+                    "success": False,
+                    "error_text": error_text,
+                    "response": None
+                }
+            elif r.status_code < 200 or r.status_code >= 300: # Error status codes
+                if not r.text:
+                    error_text = "Error occurred while sending {} request.".format(request_type)
+                else:
+                    error_text = r.json()["error"]["message"]
+                    
+                resp = {
+                    "success": False,
+                    "error_text": error_text,
+                    "response": r
+                }
+                if retry_counter < Constants.HTTPS.MAX_RETRIES:
+                    retry = True # Retry
+                    retry_counter += 1
+                    time.sleep(retry_counter * Constants.HTTPS.RETRY_INTERVAL) # Wait before retrying
+                    self._response_logging(url=url, request_type=request_type, resp=resp) # Log the response
+                    self.logger.QLogCrit(status=Constants.Logs.FAILURE, 
+                                         status_text="API called failed. Attempt {}. Retrying...".format(retry_counter)) # Log the retry
+            else: # Success!
+                resp = {
+                    "success": True,
+                    "error_text": None,
+                    "response": r
+                }
         # Log the response/error
         self._response_logging(url=url, request_type=request_type, resp=resp)
         return resp
     
-    def get_request(self, url, limit=50, single_request=False, **kwargs):
+    def get_request(self, url, limit=Constants.HTTPS.GET_LIMIT, single_request=False, **kwargs):
         """Makes a get request to the given url"""
         returnDict = {"success": True, "error_text": None, "response": {}} # Return dict with empty response
 

@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import *
 
 from qgis.core import *
 
-class AzureMapsMessageBar:
+class AzureMapsPluginMessageBar:
 
     def __init__(self, iface, logger):
         self.iface = iface

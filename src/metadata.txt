@@ -1,7 +1,6 @@
 [general]
 name=Azure Maps
 qgisMinimumVersion=3.8
-qgisMaximumVersion=3.28.1
 description=Provides access to Azure Maps services and data
 version=1.4.7
 author=Microsoft Corporation

@@ -1,14 +1,16 @@
 from qgis.core import *
-import os
+import os, inspect
 import json 
 from datetime import datetime
 
 from ..models.LogLevel import LogLevel
 from .Constants import Constants
 
-sb = ' '* 2 # Spacing between columns
+sb = 2 # Max spacing between columns
+sb_str = " " * sb # String of spaces for max spacing between columns
 sl = 8 # Max spacing for level column
 ss = 7 # Max spacing for status column
+st = 19 # Max spacing for time column
 
 class AzureMapsPluginLogger:
 
@@ -87,24 +89,37 @@ class AzureMapsPluginLogger:
             log_text = log_text.replace(sub_key_encoded, sub_key_replace)
         return log_text
 
-    def _format_log_text(self, status_code=None, status=None, status_text=None, request_type=None, url=None, text=None):
+    def _print_frame_info(self, frame_info):
+        filename = frame_info.filename.split(Constants.AZURE_MAPS_PLUGIN_NAME)[1]
+        spacing = ' '*(st + sb + sl + sb + ss + sb)
+        return "\n{}[{}:{}:{}]\t[code_context:{}]".format(spacing, filename, frame_info.function, frame_info.lineno, frame_info.code_context)
+    
+    def _add_debug_info(self, inspect_frame):
+        """Add debug info to log text"""
+        if self.debugLog and inspect_frame:
+            info = inspect.getframeinfo(inspect_frame)
+            return self._print_frame_info(info)
+        return ""
+
+    def _format_log_text(self, status_code=None, status=None, status_text=None, request_type=None, url=None, text=None, inspect_frame=None):
         """Format log text"""
         if type(status_text) == dict: status_text = json.dumps(status_text) # Convert status_text json to string
-        # ss = spacing for status, sb = spacing between columns
+        # ss = spacing for status, sb_str = string for spacing between columns
         # defined at the top of this file. ss calculated based on the max length of the status code
-        log_text_format = "{:<{ss}}{sb}{}" 
+        log_text_format = "{:<{ss}}{sb_str}{}" 
 
         if request_type and url: # Request logs
-            log_text = log_text_format.format(request_type, url, ss=ss, sb=sb)
+            log_text = log_text_format.format(request_type, url, ss=ss, sb_str=sb_str)
         elif status_code and status_text: # Response logs with status code
-            log_text = log_text_format.format(status_code, status_text, ss=ss, sb=sb)
+            log_text = log_text_format.format(status_code, status_text, ss=ss, sb_str=sb_str)
         elif status and status_text: # Response logs with status
-            log_text = log_text_format.format(status, status_text, ss=ss, sb=sb)
+            log_text = log_text_format.format(status, status_text, ss=ss, sb_str=sb_str)
         elif text: # General logs
-            log_text = log_text_format.format("", text, ss=ss, sb=sb)
+            log_text = log_text_format.format("", text, ss=ss, sb_str=sb_str)
         else: # Invalid log 
             raise Exception("Invalid log text parameters")
         log_text = self._hide_subscription_key(log_text)
+        log_text += self._add_debug_info(inspect_frame)
         return log_text
 
     def QLog(self, level, tag="Logs", **kwargs):
@@ -137,11 +152,11 @@ class AzureMapsPluginLogger:
 
     def writeLog(self, level, log_text, logFile=None):
         """Write log to file"""
-        log_text = "{:<{sl}}{sb}{}".format(LogLevel(level), log_text, sl=sl, sb=sb)
+        log_text = "{:<{sl}}{sb_str}{}".format(LogLevel(level), log_text, sl=sl, sb_str=sb_str)
         if not logFile: logFile = self.logFilePath
         if logFile:
             with open(logFile, "a") as f:
-                f.write("{}{sb}{}\n".format(self._generateLogDateTime(), log_text, sb=sb))
+                f.write("{}{sb_str}{}\n".format(self._generateLogDateTime(), log_text, sb_str=sb_str))
 
     def responseToJSON(self, response):
         """Convert response to JSON for logging"""

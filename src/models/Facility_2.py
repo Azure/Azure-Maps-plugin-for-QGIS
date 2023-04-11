@@ -2,7 +2,7 @@
 Facility-2.0 Ontology Model
 """
 
-class Facility_2:
+class FACILITY_2:
     class COLLECTIONS:
         UNIT = "unit"
         STR = "structure"
@@ -20,6 +20,9 @@ class Facility_2:
     class BASE_ATTR:
         externalId = "externalId"
         originalId = "originalId"
+        azureMapsIntId = "azureMapsIntId"
+        reservedProperties = ["azureMapsIntId"]
+        hiddenProperties = reservedProperties
 
     class UNIT(BASE_ATTR):
         categoryId = "categoryId"

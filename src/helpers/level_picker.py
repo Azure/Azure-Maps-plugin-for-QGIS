@@ -87,6 +87,10 @@ class LevelPicker:
             for qComboBox in self.qComboBoxes:
                 qComboBox.setCurrentIndex(self.current_index + 1)
 
+    def extend(self, value_list):
+        for value in value_list:
+            self.append(value)
+
     def remove(self, value):
         """Removes a value from picker_levels if exists.
             Updates QCombobox(es) which are passed in initialization.

@@ -22,6 +22,7 @@
  ***************************************************************************/
 """
 import time
+import inspect
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -29,8 +30,6 @@ from PyQt5.QtWidgets import *
 from qgis.core import *
 
 # Initialize Qt resources from file resources.py
-from QGISPlugin.models.Collection import Collection
-from QGISPlugin.models.Ontology import Ontology
 from .helpers.Constants import Constants
 from .resources import *
 
@@ -42,18 +41,14 @@ from .helpers.level_picker import LevelPicker
 from .helpers.validation_utility import ValidationUtility
 from .helpers.AzureMapsPluginLogger import AzureMapsPluginLogger
 from .helpers.AzureMapsPluginDialogBox import AzureMapsPluginDialogBox
-from .helpers.AzureMapsRequestHandler import AzureMapsRequestHandler
-from .helpers.AzureMapsMessageBar import AzureMapsMessageBar
+from .helpers.AzureMapsPluginRequestHandler import AzureMapsPluginRequestHandler
+from .helpers.AzureMapsPluginMessageBar import AzureMapsPluginMessageBar
 
 from shapely.geometry import mapping, shape
 
 import os.path
-import requests
 import urllib.parse
 import json
-from itertools import starmap
-from multiprocessing import Pool
-
 
 class AzureMapsPlugin:
     """QGIS Plugin Implementation."""
@@ -96,15 +91,14 @@ class AzureMapsPlugin:
         self.current_dataset_id = None
         self.ontology = None
         self.current_index = None
-        self.schema_map = {}
-        self.new_feature_list = []
+        self.collectionName_collectionDef_map = {}
         self.relation_map = {}
         self.enum_ids = {}
         self.areFieldsValid = {}
         self.saveFailedClasses = set()
         self.base_group = None
         self.apiName = Constants.FEATURES
-        self.apiVersion = Constants.API_Versions.V20220901PREVIEW
+        self.apiVersion = Constants.API_Versions.V20230301PREVIEW
         self.internalDelete = False
 
         self.dialogBox = AzureMapsPluginDialogBox(self.iface)
@@ -117,14 +111,14 @@ class AzureMapsPlugin:
                             subscription_key=self.dlg.sharedKey.text(),
                             autoLogToFile=True,
                             logFolder=self.dlg.logsFolderPicker.filePath(), 
-                            debugLog=False)
-        self.requestHandler = AzureMapsRequestHandler(
+                            debugLog=True)
+        self.requestHandler = AzureMapsPluginRequestHandler(
             subscription_key=self._get_subscription_key(),
             geography=self.dlg.geographyDropdown.currentText(),
             api_version=self.apiVersion,
             logger=self.logger
         )
-        self.msgBar = AzureMapsMessageBar(self.iface, logger=self.logger)
+        self.msgBar = AzureMapsPluginMessageBar(self.iface, logger=self.logger)
     
     def _setup_helpers(self):
         """Setup helpers once the parameters are set by the user."""
@@ -144,93 +138,32 @@ class AzureMapsPlugin:
     def _get_subscription_key(self):
         return self.dlg.sharedKey.text()
 
-    # noinspection PyMethodMayBeStatic
-    def tr(self, message):
-        """Get the translation for a string using Qt translation API.
-        We implement this ourselves since we do not inherit QObject.
+    def tr(self):
+        """Get the translation for plugin name using Qt translation API."""
+        return QCoreApplication.translate("AzureMapsPlugin", Constants.AZURE_MAPS)
 
-        :param message: String for translation.
-        :type message: str, QString
-
-        :returns: Translated version of message.
-        :rtype: QString
-        """
-        win = QWidget()
-        l1 = QLabel()
-        l1.setPixmap(QPixmap(Constants.Paths.PLUGIN_CIRCLE_ICON))
-
-        # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
-        return QCoreApplication.translate("AzureMapsPlugin", message)
-
-    def add_action(
-        self,
-        icon_path,
-        text,
-        callback,
-        enabled_flag=True,
-        add_to_menu=False,
-        add_to_toolbar=True,
-        status_tip=None,
-        whats_this=None,
-        parent=None,
-    ):
-        """Add a toolbar icon to the toolbar.
-
-        :param icon_path: Path to the icon for this action. Can be a resource
-            path (e.g. ':/plugins/foo/bar.png') or a normal file system path.
-        :type icon_path: str
-
-        :param text: Text that should be shown in menu items for this action.
-        :type text: str
-
-        :param callback: Function to be called when the action is triggered.
-        :type callback: function
-
-        :param enabled_flag: A flag indicating if the action should be enabled
-            by default. Defaults to True.
-        :type enabled_flag: bool
-
-        :param add_to_menu: Flag indicating whether the action should also
-            be added to the menu. Defaults to True.
-        :type add_to_menu: bool
-
-        :param add_to_toolbar: Flag indicating whether the action should also
-            be added to the toolbar. Defaults to True.
-        :type add_to_toolbar: bool
-
-        :param status_tip: Optional text to show in a popup when mouse pointer
-            hovers over the action.
-        :type status_tip: str
-
-        :param parent: Parent widget for the new action. Defaults None.
-        :type parent: QWidget
-
-        :param whats_this: Optional text to show in the status bar when the
-            mouse pointer hovers over the action.
-
-        :returns: The action that was created. Note that the action is also
-            added to self.actions list.
-        :rtype: QAction
-        """
-        icon = QIcon(icon_path)
+    def add_action(self):
+        """Add a toolbar icon to the toolbar."""
+        icon = QIcon(Constants.Paths.PLUGIN_CIRCLE_ICON)
+        
+        # Make the action
+        text = self.tr()
+        parent = self.iface.mainWindow()
+        callback = self.run
         action = QAction(icon, text, parent)
         action.triggered.connect(callback)
-        action.setEnabled(enabled_flag)
+
+        # Setup other configs
+        action.setEnabled(True)
         action.setCheckable(True)
         action.setChecked(False)
 
-        if status_tip is not None:
-            action.setStatusTip(status_tip)
-
-        if whats_this is not None:
-            action.setWhatsThis(whats_this)
-
-        if add_to_toolbar:
-            # Adds plugin icon to Plugins toolbar
-            self.iface.addToolBarIcon(action)
-
-        if add_to_menu:
-            self.iface.addPluginToVectorMenu(self.menu, action)
+        # Add tooltips
+        tooltip_text = "Azure Maps Plugin"
+        action.setStatusTip(tooltip_text)
+        action.setWhatsThis(tooltip_text)
+        self.iface.addToolBarIcon(action) # Adds plugin icon to Plugins toolbar
+        # self.iface.addPluginToVectorMenu(self.menu, action) # Adds plugin icon to Vector menu
         self.actions.append(action)
 
         return action
@@ -243,16 +176,10 @@ class AzureMapsPlugin:
             + Constants.Paths.RELATIVE_CONFIG_PATH
         )
         plugin_settings = QSettings(config_path, QSettings.IniFormat)
-        icon_path = Constants.Paths.PLUGIN_CIRCLE_ICON
-        self.add_action(
-            icon_path,
-            text=self.tr(Constants.AZURE_MAPS),
-            callback=self.run,
-            parent=self.iface.mainWindow(),
-        )
+        self.add_action()
 
         # If plugin has been installed for the first time, show a welcome message
-        if plugin_settings.value("freshinstall", None) is None:
+        if not plugin_settings.value("freshinstall", False):
             plugin_settings.setValue("freshinstall", True)
             self._open_welcome_message()
 
@@ -265,7 +192,7 @@ class AzureMapsPlugin:
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
-            self.iface.removePluginVectorMenu(self.tr(Constants.AZURE_MAPS), action)
+            self.iface.removePluginVectorMenu(self.tr(), action)
             self.iface.removeToolBarIcon(action)
 
         # Delete toolbar level picker on plugin unload
@@ -299,45 +226,40 @@ class AzureMapsPlugin:
         self.dlg.hide()
         self.actions[0].setChecked(False)
 
-    def floor_picker_changed(self, index, force=False):
-        if index < 0:
-            return
+    def _layer_setSubsetString_floorpicker(self, layer, ordinal):
+        if isinstance(layer, QgsVectorLayer) and (layer.name() in self.layerName_collectionName_map):
+            if self._is_field_exist_layer(layer, "floor"):
+                layer.rollBack()
+                layer.setSubsetString("floor = {} OR floor is NULL".format(ordinal))
 
-        ordinal = str(self.level_picker.get_ordinal(index))
+    def refresh_floor_picker(self):
+        self.floor_picker_changed(self.level_picker.get_index())
 
-        if self.current_index == index:
-            return
-        self.current_index = index
+    def floor_picker_changed(self, index):
+        """
+        Change the floor picker to the given index
+        :param index: The index of the floor to change to. Indexing should start from 0
+        """
+        # TODO: Add comments
+        # BUG: Improve this
+        if index < 0: return # Index cannot be lower than 0
+        if self.current_index == index: return # No action if index is the same as current index
+
+        ordinal = str(self.level_picker.get_ordinal(index)) # Get ordinal on index
+        self.current_index = index 
         for toplevel_layer in QgsProject.instance().layerTreeRoot().children():
             for child_treeLayer in toplevel_layer.children():
                 if isinstance(child_treeLayer, QgsLayerTreeLayer):
-                    layer = child_treeLayer.layer()
-                    if isinstance(layer, QgsVectorLayer):
-                        if "floor" in [field.name() for field in layer.fields()]:
-                            layer.rollBack()
-                            layer.setSubsetString("floor = " + ordinal)
-                        if "levels" in [field.name() for field in layer.fields()]:
-                            layer.rollBack()
-                            layer.setSubsetString(
-                                "array_contains(levels, '"
-                                + self.ordinal_to_level[int(ordinal)]
-                                + "')"
-                            )
+                    self._layer_setSubsetString_floorpicker(child_treeLayer.layer(), ordinal)
+                elif isinstance(child_treeLayer, QgsLayerTreeGroup):
+                    for child in child_treeLayer.children():
+                        if isinstance(child, QgsLayerTreeLayer):
+                            self._layer_setSubsetString_floorpicker(child.layer(), ordinal)
 
         for group in self.root.children():
             for child in group.children():
                 if isinstance(child, QgsLayerTreeLayer):
-                    layer = child.layer()
-                    if "floor" in [field.name() for field in layer.fields()]:
-                        layer.rollBack()
-                        layer.setSubsetString("floor = " + ordinal)
-                    if "levels" in [field.name() for field in layer.fields()]:
-                        layer.rollBack()
-                        layer.setSubsetString(
-                            "array_contains(levels, '"
-                            + self.ordinal_to_level[int(ordinal)]
-                            + "')"
-                        )
+                    self._layer_setSubsetString_floorpicker(child.layer(), ordinal)
 
     def set_creator_status(self, status):
         self.dlg.creatorStatus.setText(status)
@@ -355,14 +277,128 @@ class AzureMapsPlugin:
             if "response" in resp and resp["response"]: # status code is available
                 error_text = "{} Response status code {}. Error: {}".format(
                         base_error, resp["response"].status_code, resp["error_text"])
-            progress.close()
             self.dialogBox.QMessageCrit(
                 title="Dataset error",
                 text=base_error,
                 detailedText=error_text
             )
+            self.reset(progress)
             return False
         return True
+    
+    def reset(self, progress=None):
+        self.current_dataset_id = None # Remove current dataset ID
+        self.level_picker.clear() # Clear level picker
+        self.id_map = {} # Clear id map
+        # Clear QGIS layers
+        self.root.removeAllChildren()
+        self.base_group = None
+        if progress: # Close progress bar
+            progress.close()
+    
+    def _get_layer_config(self, layer):
+        """Returns a dictionary with the layer configuration, useful for creating widgets"""
+        return {
+            "Layer": layer,
+            "LayerName": layer.name(),
+            "Key": "id",
+            "Value": "name",
+            "OrderByValue": True,
+        }
+    
+    def _add_attribute(self, layer, attribute_name, attribute_type=QVariant.String, hidden=False):
+        """Adds an attribute to a layer if it doesn't exist already"""
+        index = layer.dataProvider().fieldNameIndex(attribute_name)
+        if index == -1: # attribute doesn't exist
+            provider = layer.dataProvider()
+            layer.startEditing()
+            field = QgsField(attribute_name, attribute_type)
+            provider.addAttributes([field])
+            layer.updateFields()
+            if hidden: # optionally hide attribute
+                self._hide_attribute(layer, attribute_index=provider.fieldNameIndex(attribute_name))
+            return provider.fieldNameIndex(attribute_name)
+        return index
+
+    def _add_widget(self, layer, attribute_name, attribute_type=QVariant.String, widget_type="ValueRelation", config={}):
+        """Adds a widget to an attribute if it doesn't exist already"""
+        index = self._get_feature_layer_index(layer, attribute_name)
+        if index == -1: # attribute doesn't exist
+            attribute_index = self._add_attribute(layer, attribute_name, attribute_type) # add attribute
+            self._add_widget_attribute(layer, widget_type, config, attribute_index) # add widget to attribute
+            return attribute_index
+        return index
+    
+    def _add_widget_attribute(self, layer, widget_type, config, attribute_index):
+        widget = QgsEditorWidgetSetup(widget_type, config) # create widget with attribute
+        layer.setEditorWidgetSetup(attribute_index, widget)
+
+    def _hide_attribute(self, layer, attribute_name=None, attribute_index=-1, config={}):
+        """Hides an attribute from a layer"""
+        if attribute_name:
+            attribute_index = self._get_feature_layer_index(layer, attribute_name)
+        if attribute_index != -1:
+            self._add_widget_attribute(layer, "Hidden", config, attribute_index)
+    
+    def _get_feature_attribute(self, feature, attribute_name, default_value=None):
+        """Gets an attribute from a feature if it has a value, else returns None"""
+        try:
+            value = feature[attribute_name]
+            if value == None:
+                return default_value
+            return value
+        except KeyError: # QGIS returns key error, if attribute doesn't exist
+            return default_value
+        
+    def _get_feature_attributes(self, feature, attribute_names, default_value=None):
+        """Gets multiple attributes from a feature if they have a value, else returns None"""
+        attributes = []
+        for attribute_name in attribute_names:
+            attributes.append(self._get_feature_attribute(feature, attribute_name, default_value))
+        return attributes
+        
+    def _is_field_exist(self, feature, field_name):
+        """Checks if a field exists in a feature"""
+        fieldIndex = self._get_feature_field_index(feature, field_name)
+        return fieldIndex != -1
+    
+    def _is_field_exist_layer(self, layer, field_name):
+        """Checks if a field exists in a layer"""
+        fieldIndex = self._get_feature_layer_index(layer, field_name)
+        return fieldIndex != -1
+    
+    def _get_feature_field_index(self, feature, field_name):
+        return feature.fieldNameIndex(field_name)
+    
+    def _get_feature_layer_index(self, layer, field_name):
+        return layer.fields().indexFromName(field_name)
+    
+    def _get_feature_field_index_value(self, feature, field_name, default_value=None):
+        fieldIndex = self._get_feature_field_index(feature, field_name)
+        if fieldIndex != -1:
+            return fieldIndex, self._get_feature_attribute(feature, field_name, default_value)
+        return fieldIndex, default_value
+        
+    def _get_attribute_table_config(self, layer, ontologyClass):
+        """Returns a QgsAttributeTableConfig object with the desired settings"""
+        table_config = layer.attributeTableConfig()
+        table_config.setActionWidgetStyle(QgsAttributeTableConfig.ActionWidgetStyle.DropDown)
+        for hidden_attribute in ontologyClass.BASE_ATTR.hiddenProperties:
+            attribute_index = self._get_feature_layer_index(layer, hidden_attribute)
+            if attribute_index != -1:
+                table_config.setColumnHidden(attribute_index, True)
+        return table_config
+
+    def _set_layer_labeling(self, layer):
+        """Sets the labeling for a layer"""
+        layer_settings  = QgsPalLayerSettings()
+        layer_settings.fieldName = "name" # field of feature to use for labeling
+        layer_settings.FontSizeUnit = 9 # font size
+        layer_settings.enabled = True
+        layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
+        layer.setLabelsEnabled(True) # enable labeling
+        layer.setLabeling(layer_settings)
+        layer.triggerRepaint()        
 
     def get_features_clicked(self):
         self.close_button_clicked()
@@ -432,11 +468,10 @@ class AzureMapsPlugin:
         resp = self.requestHandler.get_request(Constants.API_Paths.GET_COLLECTIONS.format(base=self.features_url))
         success = self._get_request_base_error(resp, "Unable to read dataset metadata.", progress) # call error handling function
         if not success:
-            self._getFeaturesButton_setEnabled(True)
-            return
+            return self._getFeaturesButton_setEnabled(True)
         
         r = resp["response"]
-        self.ontology = Ontology(r["ontology"])
+        self.ontology = r["ontology"]
 
         # If successful, get all the layers.
         # Create a new dataset group layer if it doesn't exist, otherwise override the existing group layer
@@ -452,60 +487,37 @@ class AzureMapsPlugin:
         # Get features from each collection.
         collections = r["collections"]
 
-        collection_order = Collection.get_order(self.ontology)
-
-        other_collections = [
-            c["id"] for c in collections if c["id"] not in collection_order
-        ]
-        # ! List must be updated if more enums will be exposed in other collections !
-        enums_collection = [Constants.COLLECTIONS.CTG, Constants.COLLECTIONS.VRT, Constants.COLLECTIONS.OPN]
-
         # Set progress bar max value
         # We loop through definition and data for each collection, hence the 2*len(collections).
-        # +2 is for other two progress.next statements we have scattered throughout the code.
-        #   - One with "Loading Dataset..." and another with "Adding Creator attributes..."
+        # +3 is for other three progress.next statements we have scattered throughout the code
+        #   - 1:"Loading Dataset..."; 2:"Adding Creator attributes..."; 3: "Dataset loaded successfully."
         numberOfCollections = len(collections) # Number of collections
-        progress_max = 2*(numberOfCollections) + 2
+        progress_max = 2*(numberOfCollections) + 3
         progress.set_maximum(progress_max)
-
-        # Clear existing enum layers, if exists
-        # Create enum group layer, if not exists
-        enums_group_name = "Enums  " + dataset_id
-        enums_group = self.root.findGroup(enums_group_name)
-        if enums_group is None:
-            enums_group = self.root.insertGroup(1, enums_group_name)
-        else:
-            enums_group.removeAllChildren()
-        # Construct Enum List
-        enums_set = set()
-
-        level_layer = category_layer = directoryInfo_layer = unit_layer = areaElement_layer = structure_layer = \
-            opening_layer = lineElement_layer = pointElement_layer = facility_layer = verticalPenetration_layer = \
-            zone_layer = None
 
         # Loop through collections and create tasks to get data and metadata(definition)
         taskList = []
         for collection in collections:
-            _id = collection["id"]
+            collectionName = collection["id"]
             links = collection["links"]
 
             data_link = next(link for link in links if link["rel"] == "items")
-            globals()['data_task_'+_id] = QgsTask.fromFunction(
-                "Getting " + _id + " collection",
+            globals()['data_task_'+collectionName] = QgsTask.fromFunction(
+                "Getting " + collectionName + " collection",
                 self.requestHandler.get_request_parallel,
-                _id, "data", data_link["href"] + bbox, 50
+                collectionName, "data", data_link["href"] + bbox, 500
             )
-            QgsApplication.taskManager().addTask(globals()['data_task_'+_id]) # Add task to global queue
-            taskList.append(globals()['data_task_'+_id]) # Add task to local list
+            QgsApplication.taskManager().addTask(globals()['data_task_'+collectionName]) # Add task to global queue
+            taskList.append(globals()['data_task_'+collectionName]) # Add task to local list
 
             meta_link = next(link for link in links if link["rel"] == "describedBy")
-            globals()['definition_task_'+_id] = QgsTask.fromFunction(
-                "Getting " + _id + " collection definition",
+            globals()['definition_task_'+collectionName] = QgsTask.fromFunction(
+                "Getting " + collectionName + " collection definition",
                 self.requestHandler.get_request_parallel,
-                _id, "definition", meta_link["href"], 50
+                collectionName, "definition", meta_link["href"], 500
             )
-            QgsApplication.taskManager().addTask(globals()['definition_task_'+_id])
-            taskList.append(globals()['definition_task_'+_id])
+            QgsApplication.taskManager().addTask(globals()['definition_task_'+collectionName])
+            taskList.append(globals()['definition_task_'+collectionName])
         
         if not taskList:
             # If no tasks were created, request failed (since it failed to fetch the data or definition)
@@ -514,8 +526,8 @@ class AzureMapsPlugin:
 
         """
         Loop through all tasks and wait for them to finish
-        _id_data_response_map = map of collectionName and data responses.
-        _id_meta_response_map = map of collectionName and definition responses.
+        collectionName_data_response_map = map of collectionName and data responses.
+        collectionName_meta_response_map = map of collectionName and definition responses.
         Response maps are used to store the responses of the tasks
         All tasks have finished when the length of response maps = number of collections
 
@@ -523,511 +535,215 @@ class AzureMapsPlugin:
         neither does QgsTask.isActive() or QgsTask.isCanceled() work properly
         """
         progress.next("Loading Dataset...")
-        _id_data_response_map, _id_meta_response_map = {}, {}
-        while (len(_id_data_response_map) != numberOfCollections) or (len(_id_meta_response_map) != numberOfCollections): 
+        collectionName_data_response_map, collectionName_meta_response_map = {}, {}
+        while (len(collectionName_data_response_map) != numberOfCollections) or (len(collectionName_meta_response_map) != numberOfCollections): 
             for task in taskList:
-                _id, request_type = task.args[0], task.args[1] # Get the collectionName and requestType from the task
+                collectionName, request_type = task.args[0], task.args[1] # Get the collectionName and requestType from the task
                 if request_type == "data": # If the task is a data task
-                    if _id in _id_data_response_map: # If we have already stored the response in response map
+                    if collectionName in collectionName_data_response_map: # If we have already stored the response in response map
                         continue
                     elif task.returned_values is not None: # If the task finished, store the response in response map
-                        _id_data_response_map[_id] = task.returned_values
+                        collectionName_data_response_map[collectionName] = task.returned_values
                         progress.next("Loading Dataset...")
                         self.msgBar.pop() # Removes the task complete message that comes from QGSTaskManager
                     elif task.exception is not None: # If the task failed, store the error in response map
                         error_json = {"error_text":task.exception, "success":False, "response":None}
-                        _id_data_response_map[_id] = error_json
+                        collectionName_data_response_map[collectionName] = error_json
                         break
                 elif request_type == "definition": # If the task is a definition task
-                    if _id in _id_meta_response_map: # If we have already stored the response in response map
+                    if collectionName in collectionName_meta_response_map: # If we have already stored the response in response map
                         continue
                     elif task.returned_values is not None: # If the task finished, store the response in response map
-                        _id_meta_response_map[_id] = task.returned_values
+                        collectionName_meta_response_map[collectionName] = task.returned_values
                         progress.next("Loading Dataset...")
                         self.msgBar.pop() # Removes the task complete message that comes from QGSTaskManager
                     elif task.exception is not None: # If the task failed, store the error in response map
                         error_json = {"error_text":task.exception, "success":False, "response":None}
-                        _id_meta_response_map[_id] = error_json
+                        collectionName_meta_response_map[collectionName] = error_json
                         break
 
         QgsApplication.taskManager().cancelAll() # Cancel all tasks
 
-        _id_layer_map = {} # Map of collectionName and layer
-        for _id in collection_order + other_collections:
-            meta_response = _id_meta_response_map[_id]
-            success = self._get_request_base_error(meta_response, "Unable to read {} collection definition".format(_id), progress) # Handle error
-            if not success:
-                self.logger.QLogDebug("Unable to read {} collection definition".format(_id))
-                return
-            self.logger.QLogDebug("Loading {} collection definition".format(_id))
-            self.load_items_definition(_id, meta_response) # Load the definition of the collection
-            if _id in enums_collection: # If the collection is an enum collection, load the enum definition
-                attr_name_list, v_layer_list = self.load_enums_definition(meta_response, enums_set)
-                for attr_name in attr_name_list: enums_set.add(attr_name)
-                for v_layer in v_layer_list: enums_group.addLayer(v_layer)
-            
-            data_response = _id_data_response_map[_id]
-            success = self._get_request_base_error(data_response, "Unable to read {} collection".format(_id), progress) # Handle error
-            if not success:
-                self.logger.QLogDebug("Unable to read {} collection".format(_id))
-                return
-            self.logger.QLogDebug("Loading {} collection".format(_id))
-            layer = self.load_items(_id, data_response, self.base_group) # Load the data of the collection into a layer
-            _id_layer_map[_id] = layer
+        _layerName_collectionName_map, _collectionName_layerName_list_map = {}, {} # Map of layerName to collectionName, Map of collectionName to layer list
+        _layerName_layer_map, _layerName_config_map = {}, {} # Map of layerName and layer, Map of layerName and config
+        _collectionName_referential_integrity_map = {} # Map of collectionName and referential integrity
+        _collectionName_required_properties_list_map = {} # Map of collectionName and required properties list
+        _layerName_geometryType_map = {} # Map of layerName and geometryType
+        for collectionName in Constants.Ontology.get_display_order(self.ontology, collections):
+            try:
+                # Handle metadata response
+                meta_response = collectionName_meta_response_map[collectionName]
+                success = self._get_request_base_error(meta_response, "Unable to read {} collection definition".format(collectionName), progress) # Handle error
+                if not success: return
+                self.logger.QLogDebug("Loading {} collection definition".format(collectionName))
+                self.collectionName_collectionDef_map[collectionName] = meta_response["response"] # Store the definition in schema map
+                
+                # Handle data response
+                data_response = collectionName_data_response_map[collectionName]
+                success = self._get_request_base_error(data_response, "Unable to read {} collection".format(collectionName), progress) # Handle error
+                if not success: return
+                self.logger.QLogDebug("Loading {} collection".format(collectionName))
+                # Load the data of the collection into a layer
+                geometryType_layer_map, referential_integrity_map, required_properties_list = \
+                    self.load_items(collectionName, data_response, 
+                                    self.collectionName_collectionDef_map[collectionName], self.base_group)
+
+                # Update the mapping
+                _layerName_collectionName_map.update({l.name(): collectionName for l in geometryType_layer_map.values()}) # Update the layerName to collectionName map
+                _collectionName_layerName_list_map[collectionName] = [l.name() for l in geometryType_layer_map.values()] # Update the collectionName to layer list map
+                _layerName_layer_map.update({l.name(): l for l in geometryType_layer_map.values()}) # Update the layerName to layer map
+                _layerName_config_map.update({l.name(): self._get_layer_config(l) for l in geometryType_layer_map.values()}) # Update the layerName to config map
+                _collectionName_referential_integrity_map[collectionName] = referential_integrity_map  # Update the collectionName to referential integrity map
+                _collectionName_required_properties_list_map[collectionName] = required_properties_list # Update the collectionName to required properties list
+                _layerName_geometryType_map.update({l.name(): geometryType for geometryType, l in geometryType_layer_map.items()}) # Update the layerName to geometryType map
+            except Exception as e: # Handles any accidental errors that may occur, especially in the load_items function
+                return self._get_request_base_error({"error_text": str(e)}, "Unable to load {} layer".format(collectionName), progress)
+        
+        self.layerName_collectionName_map, self.collectionName_layerName_list_map = _layerName_collectionName_map, _collectionName_layerName_list_map
+        self.layerName_layer_map, self.layerName_geometryType = _layerName_layer_map, _layerName_geometryType_map
+        self.collectionName_referential_integrity_map, self.collectionName_required_properties_list_map = _collectionName_referential_integrity_map, _collectionName_required_properties_list_map
         
         self.logger.QLogInfo("Loading collections successful!")
-        self.logger.QLogInfo('\t'.join(['{}: {}'.format(_id, _id_layer_map[_id].featureCount()) 
-                                        for _id in collection_order + other_collections]))
+        self.logger.QLogInfo('\t'.join(['{}: {}'.format(collectionName, 
+                                                        sum([_layerName_layer_map[lName].featureCount() 
+                                                             for lName in _collectionName_layerName_list_map[collectionName]])) 
+                                        for collectionName in Constants.Ontology.get_display_order(self.ontology, collections)]))
         
-        for _id, layer in _id_layer_map.items():
-            if _id == Constants.COLLECTIONS.LVL:
-                level_layer = layer
-            elif _id == Constants.COLLECTIONS.CTG:
-                category_layer = layer
-            elif _id == Constants.COLLECTIONS.DIR:
-                directoryInfo_layer = layer
-            elif _id == Constants.COLLECTIONS.UNIT:
-                unit_layer = layer
-            elif _id == Constants.COLLECTIONS.AEL:
-                areaElement_layer = layer
-            elif _id == Constants.COLLECTIONS.STR:
-                structure_layer = layer
-            elif _id == Constants.COLLECTIONS.OPN:
-                opening_layer = layer
-            elif _id == Constants.COLLECTIONS.LEL:
-                lineElement_layer = layer
-            elif _id == Constants.COLLECTIONS.PEL:
-                pointElement_layer = layer
-            elif _id == Constants.COLLECTIONS.FCL:
-                facility_layer = layer
-            elif _id == Constants.COLLECTIONS.VRT:
-                verticalPenetration_layer = layer
-            elif _id == Constants.COLLECTIONS.ZONE:
-                zone_layer = layer
-        
-        if level_layer is None or len(level_layer) == 0 or unit_layer is None:
-            self.msgBar.QMessageBarCrit(
-                title="Error",
-                text="One or more required collections is missing. Please try again later.",
-            )
-            self._getFeaturesButton_setEnabled(True)
-            return
-
         progress.next("Adding Creator attributes...")
         self.logger.QLogInfo("Adding Creator attributes")
-
-        # Populate relational map
-        self.relation_map["category"] = "categoryId"
-        self.relation_map["unit"] = "unitId"
-        self.relation_map["level"] = "levelId"
-        self.relation_map["facility"] = "facilityId"
-        self.relation_map["address"] = "addressId"
-
-        # Setup Configs
-        category_config = {
-            "Layer": category_layer,
-            "LayerName": category_layer.name(),
-            "Key": "id",
-            "Value": "name",
-            "OrderByValue": True,
-        }
-        unit_config = {
-            "Layer": unit_layer,
-            "LayerName": unit_layer.name(),
-            "Key": "id",
-            "Value": "name",
-            "OrderByValue": True,
-        }
-        level_config = {
-            "Layer": level_layer,
-            "LayerName": level_layer.name(),
-            "Key": "id",
-            "Value": "name",
-            "OrderByValue": True,
-        }
-        facility_config = {
-            "Layer": facility_layer,
-            "LayerName": facility_layer.name(),
-            "Key": "id",
-            "Value": "name",
-            "OrderByValue": True,
-        }
-        directory_config = {
-            "Layer": directoryInfo_layer,
-            "LayerName": directoryInfo_layer.name(),
-            "Key": "id",
-            "Value": "name",
-            "OrderByValue": True,
-        }
-
-        self.level_to_ordinal = {
-            level["id"]: level["ordinal"] for level in level_layer.getFeatures()
-        }
-        self.ordinal_to_level = {
-            level["ordinal"]: level["id"] for level in level_layer.getFeatures()
-        }
-
-        # Level layer
-        self.logger.QLogDebug("Adding level layer attributes")
-        floor_index = self.add_helper_attributes(level_layer)
-        fac_index = self.add_widget(
-            level_layer, "facility", "ValueRelation", facility_config
-        )
-        cat_index = self.add_widget(
-            level_layer, "category", "ValueRelation", category_config
-        )
-
-        ordinals = []
-        for feature in level_layer.getFeatures():
-            ordinal = str(feature["ordinal"])
-            level_layer.changeAttributeValue(feature.id(), floor_index, ordinal)
-            level_layer.changeAttributeValue(
-                feature.id(),
-                cat_index,
-                feature.attribute(self.relation_map["category"]),
-            )
-            level_layer.changeAttributeValue(
-                feature.id(),
-                fac_index,
-                feature.attribute(self.relation_map["facility"]),
-            )
-            ordinals.append(ordinal)
-        self.add_layer_events(level_layer)
-
-        for ordinal in ordinals:
-            self.level_picker.append(ordinal)
-
-        # Unit layer
-        self.logger.QLogDebug("Adding unit layer attributes")
-        if self.ontology == Ontology.FACILITY_1:
-            self._set_widget_layer_id(unit_layer, "navigableBy")
-            self._set_widget_layer_id(unit_layer, "routeThroughBehavior")
-
-        self.space_to_floors = {}
-        space_to_ordinals = {}
-
-        floor_index = self.add_helper_attributes(unit_layer)
-        cat_index = self.add_widget(
-            unit_layer, "category", "ValueRelation", category_config
-        )
-        lvl_index = self.add_widget(unit_layer, "level", "ValueRelation", level_config)
-        dir_index = self.add_widget(
-            unit_layer, "address", "ValueRelation", directory_config
-        )
-
-        for feature in unit_layer.getFeatures():
-            levelId = feature["levelId"]
-            ordinal = self.level_to_ordinal[levelId]
-            floor = ordinal
-            unit_layer.changeAttributeValue(feature.id(), floor_index, floor)
-            unit_layer.changeAttributeValue(
-                feature.id(),
-                cat_index,
-                feature.attribute(self.relation_map["category"]),
-            )
-            unit_layer.changeAttributeValue(
-                feature.id(), lvl_index, feature.attribute(self.relation_map["level"])
-            )
-            unit_layer.changeAttributeValue(
-                feature.id(), dir_index, feature.attribute(self.relation_map["address"])
-            )
-            self.space_to_floors[feature["id"]] = floor
-            space_to_ordinals[feature["id"]] = ordinal
-        self.add_layer_events(unit_layer)
-        print('Unit Layer')
-
-        # Structure layer
-        self.logger.QLogDebug("Adding structure layer attributes")
-        if structure_layer is not None:
-            floor_index = self.add_helper_attributes(structure_layer)
-            cat_index = self.add_widget(
-                structure_layer, "category", "ValueRelation", category_config
-            )
-            lvl_index = self.add_widget(
-                structure_layer, "level", "ValueRelation", level_config
-            )
-            for feature in structure_layer.getFeatures():
-                levelId = feature["levelId"]
-                floor = self.level_to_ordinal[levelId]
-                structure_layer.changeAttributeValue(feature.id(), floor_index, floor)
-                structure_layer.changeAttributeValue(
-                    feature.id(),
-                    cat_index,
-                    feature.attribute(self.relation_map["category"]),
+        
+        # Facility and Level layer are mandatory
+        error_text = "Unable to load {} layer. Please try again."
+        for layer_name_check in ["facility", "level"]:
+            if layer_name_check not in _collectionName_layerName_list_map:
+                return self.dialogBox.QMessageCrit(
+                    title="Dataset error",
+                    text=error_text.format(layer_name_check),
+                    detailedText=error_text.format(layer_name_check)
                 )
-                structure_layer.changeAttributeValue(
-                    feature.id(),
-                    lvl_index,
-                    feature.attribute(self.relation_map["level"]),
-                )
-            self.add_layer_events(structure_layer)
+            
+        _levelId_ordinal_map, _ordinal_levelId_map = {}, {}
+        _unitId_ordinal_map = {}
+        
 
-        # Area element layer
-        self.logger.QLogDebug("Adding area element layer attributes")
-        cat_index = self.add_widget(
-            areaElement_layer, "category", "ValueRelation", category_config
-        )
-        unit_index = self.add_widget(
-            areaElement_layer, "unit", "ValueRelation", unit_config
-        )
+        loading_order = []
+        for cName in Constants.Ontology.get_loading_order(self.ontology, collections):
+            loading_order.extend(sorted(_collectionName_layerName_list_map[cName]))
 
-        for feature in areaElement_layer.getFeatures():
-            areaElement_layer.changeAttributeValue(
-                feature.id(),
-                cat_index,
-                feature.attribute(self.relation_map["category"]),
-            )
-            areaElement_layer.changeAttributeValue(
-                feature.id(), unit_index, feature.attribute(self.relation_map["unit"])
-            )
-        self.add_floors_values(areaElement_layer)
+        for order_ind, layerName in enumerate(loading_order):
+            collectionName = _layerName_collectionName_map[layerName]
+            layer = _layerName_layer_map[layerName]
+            geometryType = _layerName_geometryType_map[layerName]
+            self.logger.QLogDebug("Adding {} layer attributes".format(layerName))
 
-        # Line element layer
-        self.logger.QLogDebug("Adding line element layer attributes")
-        cat_index = self.add_widget(
-            lineElement_layer, "category", "ValueRelation", category_config
-        )
-        unit_index = self.add_widget(
-            lineElement_layer, "unit", "ValueRelation", unit_config
-        )
+            if geometryType == Constants.GEOMETRY_TYPE.POLYGON or geometryType == Constants.GEOMETRY_TYPE.MULTIPOLYGON:
+                self._set_layer_labeling(layer)
+                
+            ontologyClass = Constants.Facility_2 if self.ontology == Constants.Ontology.FACILITY_2 \
+                                                 else Constants.CustomOntology
+            attribute_table_config = self._get_attribute_table_config(layer, ontologyClass)
+            layer.setAttributeTableConfig(attribute_table_config)
 
-        for feature in lineElement_layer.getFeatures():
-            lineElement_layer.changeAttributeValue(
-                feature.id(),
-                cat_index,
-                feature.attribute(self.relation_map["category"]),
-            )
-            lineElement_layer.changeAttributeValue(
-                feature.id(), unit_index, feature.attribute(self.relation_map["unit"])
-            )
-        self.add_floors_values(lineElement_layer)
+            for hidden_attribute in ontologyClass.BASE_ATTR.hiddenProperties:
+                self._hide_attribute(layer, hidden_attribute)
 
-        # Point element layer
-        self.logger.QLogDebug("Adding point element layer attributes")
-        cat_index = self.add_widget(
-            pointElement_layer, "category", "ValueRelation", category_config
-        )
-        unit_index = self.add_widget(
-            pointElement_layer, "unit", "ValueRelation", unit_config
-        )
+            referential_integrity_map = _collectionName_referential_integrity_map[collectionName]
+            required_properties_list = _collectionName_required_properties_list_map[collectionName]
+            geometryType = _layerName_geometryType_map[layerName]
 
-        for feature in pointElement_layer.getFeatures():
-            pointElement_layer.changeAttributeValue(
-                feature.id(),
-                cat_index,
-                feature.attribute(self.relation_map["category"]),
-            )
-            pointElement_layer.changeAttributeValue(
-                feature.id(), unit_index, feature.attribute(self.relation_map["unit"])
-            )
-        self.add_floors_values(pointElement_layer)
+            """
+            Add floor attribute - seperate attribute needed since only level featureClass has ordinals (floor numbers)
+            Most have levelId (and unitId, in case of Facility2.0 Ontology), which can be used to extract ordinals
+            This helps to store ordinals in all featureClasses
+            """
+            # If the layer has no geometry, or if it is a facility layer - we don't need to add floors
+            if geometryType == Constants.GEOMETRY_TYPE.NOGEOMETRY or collectionName == "facility": 
+                floor_index = -1
+            else:
+                floor_index = self._add_attribute(layer=layer, attribute_name="floor", attribute_type=QVariant.String, hidden=True)
+            
+            # Add a widget for each referential integrety field
+            ref_field_id_widget_index_map = {}
+            for ref_field_name, ref_field_id in referential_integrity_map.items():
+                widget_index = -1
+                for layerName in _collectionName_layerName_list_map[ref_field_name]:
+                    widget_index = self._add_widget(layer=layer, attribute_name=ref_field_name, attribute_type=QVariant.String,
+                                                widget_type="ValueRelation", config=_layerName_config_map[layerName])
+                ref_field_id_widget_index_map[ref_field_id] = widget_index
+                
+            # Loop through all features and apply necessary changes (add floor attribute, add referential integrity widgets)
+            for feature in layer.getFeatures():
+                featureId = self._get_feature_attribute(feature, "id")
+                ordinal = self._get_feature_attribute(feature, "ordinal")
+                levelId, unitId = self._get_feature_attribute(feature, "levelId"), self._get_feature_attribute(feature, "unitId")
+                is_floor = True
 
-        # Vertical Penetration layer
-        self.logger.QLogDebug("Adding vertical penetration layer attributes")
-        if self.ontology == Ontology.FACILITY_1:
-            self._set_widget_layer_id(unit_layer, "direction")
-            self._set_widget_layer_id(unit_layer, "navigableBy")
+                # If level layer, ordinal is not NULL, add ordinal to layerId--ordinal map
+                # Otherwise, ordinal is NULL, get ordinal from levelId (or unitId in case of facility ontology)
+                if collectionName.lower() == "facility": continue
+                elif collectionName.lower() == "level":
+                    _levelId_ordinal_map[featureId] = ordinal
+                    _ordinal_levelId_map[ordinal] = featureId
+                else: 
+                    if levelId != None and levelId in _levelId_ordinal_map:
+                        ordinal = _levelId_ordinal_map[levelId]
+                    elif unitId != None and unitId in _unitId_ordinal_map and self.ontology == Constants.Ontology.FACILITY_2: # In case of areaElement, lineElement, pointElement
+                        ordinal = _unitId_ordinal_map[unitId]
+                    else:
+                        # Features without levelId, added to all levels
+                        is_floor = False
+                        self.logger.QLogInfo("Feature with id:{} is not attached to a floor".format(featureId))
+                        # raise Exception("Unable to get ordinal for feature with id:{}".format(featureId))
 
-        if verticalPenetration_layer is not None:
-            floor_index = self.add_helper_attributes(verticalPenetration_layer)
-            cat_index = self.add_widget(
-                verticalPenetration_layer, "category", "ValueRelation", category_config
-            )
-            lvl_index = self.add_widget(
-                verticalPenetration_layer, "level", "ValueRelation", level_config
-            )
+                # Handling Facility2.0 ontology scenario, add ordinal to unitId--ordinal map
+                if collectionName == "unit" and self.ontology == Constants.Ontology.FACILITY_2: 
+                    _unitId_ordinal_map[featureId] = ordinal
+                if collectionName == "facility": # BUG: Not sure what this is
+                    self._update_layer_group_name(layer)
 
-            for feature in verticalPenetration_layer.getFeatures():
-                levelId = feature["levelId"]
-                floor = self.level_to_ordinal[levelId]
-                verticalPenetration_layer.changeAttributeValue(
-                    feature.id(), floor_index, str(floor)
-                )
-                verticalPenetration_layer.changeAttributeValue(
-                    feature.id(),
-                    cat_index,
-                    feature.attribute(self.relation_map["category"]),
-                )
-                verticalPenetration_layer.changeAttributeValue(
-                    feature.id(),
-                    lvl_index,
-                    feature.attribute(self.relation_map["level"]),
-                )
-            self.add_layer_events(verticalPenetration_layer)
+                # If floor attribute exists, add ordinal to floor attribute
+                if floor_index != -1 and is_floor:
+                    layer.changeAttributeValue(feature.id(), floor_index, ordinal)
 
-        # Opening layer
-        self.logger.QLogDebug("Adding opening layer attributes")
-        if opening_layer is not None:
-            if self.ontology == Ontology.FACILITY_1:
-                self._set_widget_layer_id(opening_layer, "navigableBy")
-                self._set_widget_layer_id(opening_layer, "accessLeftToRight")
-                self._set_widget_layer_id(opening_layer, "accessRightToLeft")
+                # Add referential integrity values to referential integrity fields
+                # For Facility2.0, category and directory Info layers would not have any referential integrity fields
+                for ref_field_id, widget_index in ref_field_id_widget_index_map.items():
+                    layer.changeAttributeValue(feature.id(), widget_index, self._get_feature_attribute(feature, ref_field_id))
 
-            floor_index = self.add_helper_attributes(opening_layer)
-            cat_index = self.add_widget(
-                opening_layer, "category", "ValueRelation", category_config
-            )
-            lvl_index = self.add_widget(
-                opening_layer, "level", "ValueRelation", level_config
-            )
+            layer.commitChanges()
+            self.add_layer_events(layer)
 
-            for feature in opening_layer.getFeatures():
-                levelId = feature["levelId"]
-                floor = self.level_to_ordinal[levelId]
-                opening_layer.changeAttributeValue(
-                    feature.id(), floor_index, str(floor)
-                )
-                opening_layer.changeAttributeValue(
-                    feature.id(),
-                    cat_index,
-                    feature.attribute(self.relation_map["category"]),
-                )
-                opening_layer.changeAttributeValue(
-                    feature.id(),
-                    lvl_index,
-                    feature.attribute(self.relation_map["level"]),
-                )
-            self.add_layer_events(opening_layer)
-
-        # Facility layer
-        self.logger.QLogDebug("Adding facility layer attributes")
-        if facility_layer is not None:
-            cat_index = self.add_widget(
-                facility_layer, "category", "ValueRelation", category_config
-            )
-            dir_index = self.add_widget(
-                facility_layer, "address", "ValueRelation", directory_config
-            )
-
-            for feature in facility_layer.getFeatures():
-                facility_layer.changeAttributeValue(
-                    feature.id(),
-                    cat_index,
-                    feature.attribute(self.relation_map["category"]),
-                )
-                facility_layer.changeAttributeValue(
-                    feature.id(),
-                    dir_index,
-                    feature.attribute(self.relation_map["address"]),
-                )
-            self.add_layer_events(facility_layer)
-
-            # Update the layer group name w/ facility_layer name or ID
-            self._update_layer_group_name(layer)
-
-        # Category Layer
-        self.logger.QLogDebug("Adding category layer attributes")
-        if category_layer is not None:
-            if self.ontology == Ontology.FACILITY_1:
-                self._set_widget_layer_id(category_layer, "navigableBy")
-            self.add_layer_events(category_layer)
-
-        # Directory Info layer
-        self.logger.QLogDebug("Adding directory info layer attributes")
-        if directoryInfo_layer is not None:
-            self.add_layer_events(directoryInfo_layer)
-
-        # Zone layer
-        self.logger.QLogDebug("Adding zone layer attributes")
-        if zone_layer is not None:
-            floor_index = self.add_helper_attributes(zone_layer)
-            cat_index = self.add_widget(
-                zone_layer, "category", "ValueRelation", category_config
-            )
-            lvl_index = self.add_widget(
-                zone_layer, "level", "ValueRelation", level_config
-            )
-            for feature in zone_layer.getFeatures():
-                levelId = feature["levelId"]
-                floor = self.level_to_ordinal[levelId]
-                zone_layer.changeAttributeValue(feature.id(), floor_index, floor)
-                zone_layer.changeAttributeValue(
-                    feature.id(),
-                    cat_index,
-                    feature.attribute(self.relation_map["category"]),
-                )
-                zone_layer.changeAttributeValue(
-                    feature.id(),
-                    lvl_index,
-                    feature.attribute(self.relation_map["level"]),
-                )
-            self.add_layer_events(zone_layer)
-
+        self.levelId_ordinal_map, self.ordinal_levelId_map = _levelId_ordinal_map, _ordinal_levelId_map
+        self.unitId_ordinal_map = _unitId_ordinal_map
+        self.level_picker.extend(sorted(self.levelId_ordinal_map.values()))
+        """
         if level_layer is None or unit_layer is None:
             self.msgBar.QMessageBarCrit(
                 title="Error",
                 text="One or more required collections is missing.",
             )
             return
-
+        """
         # Set canvas CRS to WGS84 Pseudo-Mercator
-        canvas_crs = QgsCoordinateReferenceSystem(Constants.CRS_WGS84)
+        canvas_crs = QgsCoordinateReferenceSystem(Constants.CRS_EPSG_3857)
         self.iface.mapCanvas().setDestinationCrs(canvas_crs)
 
         self._getFeaturesButton_setEnabled(True)
 
         # zoom into unit layer after loading complete
-        self.iface.setActiveLayer(unit_layer)
         self.iface.zoomToActiveLayer()
 
         # Clean up to filter features by level and reset initial level to 0 if possible
         self.level_picker.set_base_ordinal(0)
-        self.floor_picker_changed(self.level_picker.get_index())
+        self.refresh_floor_picker()
 
+        progress.next("Dataset loaded successfully.")
         self.logger.QLogInfo("{} Datset successfully loaded {}".format('-'*10, '-'*10))
         # Close progress dialog
         progress.close()
 
-    def add_widget(self, layer, fieldName, widgetType, config={}):
-        levelsIndex = layer.dataProvider().fieldNameIndex(fieldName)
-        if levelsIndex == -1:
-            layer.startEditing()
-            widget = QgsEditorWidgetSetup(widgetType, config)
-            field = QgsField(fieldName, QVariant.String)
-            layer.dataProvider().addAttributes([field])
-            layer.updateFields()
-            layer.setEditorWidgetSetup(
-                layer.dataProvider().fieldNameIndex(fieldName), widget
-            )
-            return layer.dataProvider().fieldNameIndex(fieldName)
-        return levelsIndex
-
-    # Adds floors and name attributes and returns the index of the first field added (floors).
-    def add_helper_attributes(self, layer):
-        floor = layer.dataProvider().fieldNameIndex("floor")
-        if floor == -1:
-            layer.startEditing()
-            provider = layer.dataProvider()
-            field = QgsField("floor", QVariant.String)
-            provider.addAttributes([field])
-            layer.updateFields()
-            hiddenWidget = QgsEditorWidgetSetup("Hidden", {})
-            layer.setEditorWidgetSetup(max(provider.attributeIndexes()), hiddenWidget)
-            # print(provider.fields()[max(provider.attributeIndexes())].editorWidgetSetup().type())
-            return max(provider.attributeIndexes())
-        else:
-            return floor
-
-    def add_floors_values(self, layer):
-        if layer is None:
-            return False
-
-        floor_index = self.add_helper_attributes(layer)
-
-        for feature in layer.getFeatures():
-            unitId = feature["unitId"]
-            if unitId is not None:
-                # unitId = json.loads(unitId)
-                # unitId = str(unitId["prefix"]) + str(unitId["id"])
-                floor = self.space_to_floors.get(unitId, None)
-                if floor is not None:
-                    layer.changeAttributeValue(feature.id(), floor_index, str(floor))
-
-        self.add_layer_events(layer)
-        return True
-
     def add_layer_events(self, layer):
-        layer.commitChanges()
+        """Add events/signals to layer"""
         layer.beforeCommitChanges.connect(lambda: self.on_before_commit_changes(layer))
         layer.featuresDeleted.connect(lambda fids: self.on_features_deleted(fids, layer))
         layer.featureAdded.connect(lambda fid: self.on_feature_added_or_changed(fid, layer))
@@ -1039,134 +755,179 @@ class AzureMapsPlugin:
     def on_before_rollBack(self, layer):
         self._handle_error_msgBar(layer.name(), False)
 
-    def load_items(self, name, response, group):
-        layer = None            
-        # Load into a new layer, letting OGR take care of GeoJSON details.
-        new_layer = QgsVectorLayer(json.dumps(response), "temp", "ogr")
-        crs = new_layer.crs().toWkt()
+    def _handle_error_msgBar(self, layer_name, is_fail):
+        """Handle the error display in message bar"""
+        if is_fail: # If there is a failure, add to list of failed classes
+            self.saveFailedClasses.add(layer_name)
+        else: # If there is no failure, remove from list of failed classes
+            self.saveFailedClasses.discard(layer_name)
+        if self.saveFailedClasses: # If there are any failed classes, display the message bar
+            saveFailedStrings = ['"{}"'.format(f) for f in self.saveFailedClasses]
+            self.msgBar.QMessageBarPopPushCrit(
+                title="Save Failed!",
+                text="Your saves in {} layer(s) are still pending".format(', '.join(saveFailedStrings)),
+                item_id="save_failed",
+                showMore = """Your changes are still present in QGIS. Please fix the issues and try saving again.
+Logs can be found at {}""".format(self.logger.errorLogFolderPath))
+        else:
+            self.msgBar.pop(item_id="save_failed")
 
-        # If it's the first page, create the memory layer from the WFS temp layer.
-        if layer is None:
-            wkb_type = new_layer.wkbType()
-            if wkb_type == QgsWkbTypes.NoGeometry:
-                wkt = "NoGeometry"
-            elif wkb_type == QgsWkbTypes.Point:
-                wkt = "Point"
-            elif wkb_type == QgsWkbTypes.MultiPoint:
-                wkt = "MultiPoint"
-            elif wkb_type == QgsWkbTypes.LineString:
-                wkt = "LineString"
-            elif wkb_type == QgsWkbTypes.MultiLineString:
-                wkt = "MultiLineString"
-            elif wkb_type == QgsWkbTypes.Polygon:
-                wkt = "Polygon"
-            elif wkb_type == QgsWkbTypes.MultiPolygon:
-                wkt = "MultiPolygon"
-            else:
-                return name, None
+    def _resolve_referential_integrity(self, field_info):
+        """
+        Resolve referential integrity for a field.
+        If the field references another feature, return the featureId of that feature and field name.
+        Eg:
+        {"name": "categoryId", "required": true, "type": { "featureId": "category" }}
+        Returns: "category", "categoryId"
+        """
+        field_name, field_type = field_info["name"], field_info["type"]
+        if "featureId" in field_type:
+            return field_type["featureId"], field_name
+        return None, None
+    
+    def _split_response_by_geometry_type(self, response, geometryTypes):
+        """
+        Split response into a dictionary of geometry types.
+        """
+        response_by_geometry_type = {geometryType: None for geometryType in geometryTypes}
+        if Constants.GEOMETRY_TYPE.INVALID in response_by_geometry_type: # Remove INVALID geometry type
+            del response_by_geometry_type[Constants.GEOMETRY_TYPE.INVALID]
+        for feature in response["features"]:
+            if feature["geometry"] is None: # No geometry
+                geometryType = Constants.GEOMETRY_TYPE.NOGEOMETRY
+            else: # Geometry exists, get geometry type
+                geometryType = Constants.GEOMETRY_TYPE(feature["geometry"]["type"])
 
-            # layer = QgsVectorLayer(wkt + "?crs=" + crs + "&index=yes", name, "memory")
-            maplayer = QgsLayerDefinition.loadLayerDefinitionLayers(
-                self.plugin_dir + "/defs/" + self.ontology.value + "/" + name + ".qlr"
-            )
-            if len(maplayer) != 0:
-                layer = maplayer[0]
-            else:
-                layer = QgsVectorLayer(
-                    wkt + "?crs=" + crs + "&index=yes", name, "memory"
-                )
-            # Add fields to layer - if API returns more attributes than qlr definition
-                
-            layer.dataProvider().addAttributes(
-                new_layer.dataProvider().fields().toList()
-            )
+            if geometryType == Constants.GEOMETRY_TYPE.INVALID: # Ignore INVALID geometry type
+                continue 
+            if geometryType not in response_by_geometry_type: # Throw exception if geometry type is not in defined list of geometry types.
+                raise Exception("Geometry type {} not found in defined list of geometry types.".format(geometryType))
             
+            # Add feature to dictionary of geometry types
+            if response_by_geometry_type[geometryType] is None: 
+                response_by_geometry_type[geometryType] = {"type": "FeatureCollection", "features": []}
+            response_by_geometry_type[geometryType]["features"].append(feature)
+        return response_by_geometry_type
+
+    def load_items(self, name, response, collection_definition, group):
+        """
+        Main function to load all features from a feature class, in a response, to a layer.
+        """
+        response_json = response["response"]
+
+        # Get properties from collection definition
+        properties = collection_definition.get("properties", [])
+        properties_map = {field["name"]: field for field in properties}
+
+        # Get list of geometry types from collection definition. Throws exception if invalid geometry type.
+        geometryTypeFromDefinition = collection_definition.get("geometryType", None)
+        geometryTypes = Constants.GEOMETRY_TYPE.from_definition(geometryTypeFromDefinition) # Returns a list of geometry types.
+
+        # Split response into a dictionary of geometry types.
+        feature_collection_by_geometry_type = self._split_response_by_geometry_type(response_json, geometryTypes)
+        geometry_group = group
+        # If there are multiple geometry types, create a group for the geometry types
+        if len(feature_collection_by_geometry_type) > 1:
+            geometry_group = group.addGroup(name)
+            geometry_group.setExpanded(False)
+
+        # For each geometry type, create a layer and add it to the group
+        fullFieldString = None
+        geometry_type_layer_map = {}
+        referential_integrity_map, required_properties_list = {}, [] # Referential Integrerity Map, Required Properties Map
+        for geometryType, feature_collection in feature_collection_by_geometry_type.items():
+            # Make a temporary layer with the feature_collection
+            temp_layer = QgsVectorLayer(json.dumps(feature_collection), "temp", "ogr")
+
+            # Create a field string for the layer. Happens only once, for all geometry types since all geometry types have the same fields.
+            if fullFieldString is None:
+                """
+                Load fields from temp_layer, to preserve ordering
+                Copying features from temp_layer to layer happens via index (i.e. in order of occurance)
+                If order of fields in temp_layer is not the same as the order of fields in the actual layer, data is copied incorrectly
+                """
+                field_order = [field.name() for field in temp_layer.fields()] # Get field order from temp_layer
+                if len(field_order)> 0:
+                    if "id" != field_order[0]: # BUG: IMPROVE this 
+                        self.logger.QLogDebug("Unable to load dataset. ID field not found in first position.", inspect_frame=inspect.currentframe())
+                        raise Exception("Unable to load dataset.")
+                    field_order.remove("id")
+                # other fields from the collection definition. These can occur in any order, since no data was found for them in the temp_layer
+                other_fields_order = [field["name"] for field in properties if field["name"] not in field_order]
+                
+                fieldString = []
+                fieldString.append('field={}:{}'.format("id", Constants.FIELD_TYPE.STRING)) # ID is always first, and not defined in the properties
+                for field_name in field_order + other_fields_order: # Combine field order and other fields
+                    if field_name not in properties_map: continue
+                    field = properties_map[field_name] # get info for the field from the collection definition
+                    field_type = Constants.FIELD_TYPE.from_definition_type(field["type"])
+                    
+                    # Setup referential integrity map
+                    ref_field_name, ref_field_id = self._resolve_referential_integrity(field)
+                    if ref_field_name:
+                        referential_integrity_map[ref_field_name] = ref_field_id
+                    
+                    # Setup required properties map
+                    if field.get("required", False):
+                        required_properties_list.append(field_name)
+                    fieldString.append('field={}:{}'.format(field_name, field_type))
+                fullFieldString = '&'.join(fieldString)
+
+                # Handling levelId integretiy for custom ontology 
+                if self.ontology == Constants.Ontology.CUSTOM and "levelId" in properties_map:
+                    referential_integrity_map["level"] = "levelId"
+            
+            # Layer name is the collection name, unless there are multiple geometry types, in which case the geometry type is appended to the name
+            layer_name = "{}{}{}".format(name, Constants.LAYER_NAME_DELIMITER, geometryType) if len(feature_collection_by_geometry_type) > 1 else name
+
+            # Define the actual layer, with the layer name and specified fields
+            layer = QgsVectorLayer(
+                Constants.QGIS_VECTOR_LAYER_URI.format(geometryType=geometryType, crs=Constants.CRS_EPSG_4326, fieldString=fullFieldString),
+                layer_name,
+                "memory"
+                )
+
+            # Add any leftover attributes from the temp layer to actual layer
+            layer.dataProvider().addAttributes(temp_layer.dataProvider().fields().toList())
+            layer.updateFields()
+            
+            # Add layer to project, ready for display
             QgsProject.instance().addMapLayer(layer, False)
-            group.addLayer(layer)
-            layer.updateFields()
+            geometry_group.addLayer(layer)
 
-        # Append the temp layer features to the memory layer.
-        layer.startEditing()
+            # Add any fields defined in actual layer, to the temp layer
+            # This is needed because to copy over data from the temp layer to the actual layer, we need to have the same fields in both
+            layer.startEditing()
+            qlr_fields = [field for field in layer.fields()]
+            api_fields_name_set = set([field.name() for field in temp_layer.fields()])
+            for qlr_field in qlr_fields:
+                if qlr_field.name() not in api_fields_name_set:
+                    field_type = qlr_field.type()
+                    if field_type == QVariant.String:
+                        set_expression = ""
+                    elif field_type == QVariant.Bool:
+                        set_expression = "False"
+                    else:
+                        set_expression = None
+                    temp_layer.addExpressionField(set_expression, qlr_field)
+            
+            # Add the data from the temp layer to the actual layer
+            success = layer.addFeatures(temp_layer.getFeatures())
 
-        # Append additional fields to API-loaded layer if fields from QLR file is not found
-        qlr_fields = [field for field in layer.fields()]
-        api_fields_name_set = set([field.name() for field in new_layer.fields()])
-        for qlr_field in qlr_fields:
-            if qlr_field.name() not in api_fields_name_set:
-                field_type = qlr_field.type()
-                if field_type == QVariant.String:
-                    set_expression = ""
-                elif field_type == QVariant.Bool:
-                    set_expression = "False"
-                else:
-                    set_expression = None
-                new_layer.addExpressionField(set_expression, qlr_field)
+            # Delete the anchorPoint field, if it exists
+            # BUG: RESOLVE this
+            anchorIndex = layer.dataProvider().fieldNameIndex("anchorPoint")
+            if anchorIndex != -1:
+                result = layer.dataProvider().deleteAttributes([anchorIndex])
+                layer.updateFields()
+            layer.commitChanges() # Commit pending changes to the actual layer
 
-        success = layer.addFeatures(new_layer.getFeatures())
-
-        # Remove anchorPoint until new customer requirements
-        attrIndexesToBeRemoved = []
-        anchorIndex = layer.dataProvider().fieldNameIndex("anchorPoint")
-        if anchorIndex != -1:
-            attrIndexesToBeRemoved.append(anchorIndex)
-        if len(attrIndexesToBeRemoved) != 0:
-            result = layer.dataProvider().deleteAttributes(attrIndexesToBeRemoved)
-            layer.updateFields()
-        layer.commitChanges()
-
-        for feature in layer.getFeatures():
-            self.id_map[layer.name() + ":" + str(feature.id())] = feature["id"]
-
-        return layer
-
-    def load_items_definition(self, _id, resp):
-        """
-        Load collection definition
-        Save schema map for writing features
-        """
-        response = resp["response"]
-        properties = response["properties"]
-        names = []
-        for attrs in properties:
-            names.append(attrs["name"])
-        self.schema_map[_id] = names
-
-    def load_enums_definition(self, resp, enums_set):
-        """Load enums definition"""
-        response = resp["response"]
-        properties = response.get("properties")
-        attr_name_list, v_layer_list = [], []
-        for attrs in properties:
-            attr_type = attrs.get("type")
-            attr_name = attrs.get("name")
-
-            if not isinstance(attr_type, dict):
-                continue
-            if not isinstance(attr_type.get("array"), dict) and not isinstance(
-                attr_type.get("enum"), list
-            ):
-                continue
-
-            enum_list = attr_type.get(
-                "enum", attr_type.get("array", {}).get("enum")
-            )
-            if not enum_list or not attr_name or attr_name in enums_set:
-                continue
-
-            v_layer = QgsVectorLayer(
-                "None?field=" + attr_name + ":string(0,0)", attr_name, "memory"
-            )
-            QgsProject.instance().addMapLayer(v_layer, False)
-            v_layer.startEditing()
-            for enum_value in enum_list:
-                feature = QgsFeature()
-                feature.setAttributes([enum_value])
-                v_layer.addFeature(feature)
-            v_layer.commitChanges()
-            self.enum_ids[attr_name] = v_layer.id()
-            attr_name_list.append(attr_name)
-            v_layer_list.append(v_layer)
-        return attr_name_list, v_layer_list
+            # Store the id of each feature in a map, so we can use it later to update the feature
+            for feature in layer.getFeatures():
+                self.id_map[layer.name() + ":" + str(feature.id())] = self._get_feature_attribute(feature, "id")
+            
+            geometry_type_layer_map[geometryType] = layer
+        return geometry_type_layer_map, referential_integrity_map, required_properties_list
 
     def on_fields_changed(self, layer):
         self.dialogBox.QMessageWarn(
@@ -1176,49 +937,27 @@ class AzureMapsPlugin:
                             Otherwise, you may experience failures on saving your data.""",
         )
 
+    def _is_string_field_valid(self, feature, field_name, check_func=None):
+        if self._is_field_exist(feature, field_name):
+            value = self._get_feature_attribute(feature, field_name, "")
+            if value and value.strip() and value != "NULL" and check_func(value): 
+                return True
+        return False
+    
+    def _string_field_valid(self, feature, field_name, check_func=None):
+        is_valid = self._is_string_field_valid(feature, field_name, check_func)
+        if not is_valid:
+            self.msgBar.QMessageBarWarn(
+                title="Warning",
+                text="{} is required.".format(field_name),
+                duration=10
+            )
+        return is_valid
+
     def on_feature_added_or_changed(self, fid, layer):
-        feature = layer.getFeature(fid)
-        websiteIndex = feature.fieldNameIndex("website")
-        nameIndex = feature.fieldNameIndex("name")
-        setIdIndex = feature.fieldNameIndex("setId")
-        if websiteIndex != -1:
-            website = str(feature.attribute("website") or "")
-            if ( website and website != "NULL" and not ValidationUtility.validateWebsite(website)):
-                self.msgBar.QMessageBarWarn(
-                    title="Warning",
-                    text="'{}' is not a valid website.".format( website ),
-                    duration=10
-                )
-                self.areFieldsValid[fid] = False
-                return
-            else:
-                self.areFieldsValid[fid] = True
-        if nameIndex != -1:
-            if ( layer.name() in ["category", "directoryInfo", "unit", "level"]):
-                name = str(feature.attribute("name") or "")
-                if not (name and name.strip()) or name == "NULL":
-                    self.msgBar.QMessageBarWarn(
-                        title="Warning",
-                        text="'name' cannot be null or empty on {} layer".format(layer.name()),
-                        duration=10
-                    )
-                    self.areFieldsValid[fid] = False
-                    return
-                else:
-                    self.areFieldsValid[fid] = True
-        if setIdIndex != -1:
-            if layer.name() in ["zone", "verticalPenetration"]:
-                setId = str(feature.attribute("setId") or "")
-                if not (setId and setId.strip()) or setId == "NULL":
-                    self.msgBar.QMessageBarWarn(
-                        title="Warning",
-                        text="'setId' cannot be null or empty on {} layer".format(layer.name()),
-                        duration=10
-                    )
-                    self.areFieldsValid[fid] = False
-                    return
-                else:
-                    self.areFieldsValid[fid] = True
+        # BUG: Handle feature validation based on required fields
+        # Not a P1 because field validity is handled by the API as well
+        self.areFieldsValid[fid] = True # Set the flag to true, make it false if any of the checks fail
 
     def on_features_deleted(self, feature_ids, layer):
         if self.internalDelete:
@@ -1252,14 +991,14 @@ class AzureMapsPlugin:
     def on_after_commit_changes(self, layer):
         for feature in layer.getFeatures():
             if '{}:{}'.format(layer.name(), feature.id()) not in self.id_map:
-                self.id_map['{}:{}'.format(layer.name(), feature.id())] = feature['id']
+                self.id_map['{}:{}'.format(layer.name(), feature.id())] = self._get_feature_attribute(feature, "id")
 
         for _, feature, _ in self.failAdd:
             layer.addFeature(feature)
                 
         # Looping through edits
         for _, (feature, oldFeature), _ in self.failEdit:
-            fid, featureId = feature.id(), feature["id"]
+            fid, featureId = feature.id(), self._get_feature_attribute(feature, "id")
             for newFeatureChange, idx in self._compare_feature_changes(feature, oldFeature).values(): # Make the commit
                 layer.changeAttributeValue(fid, idx, newFeatureChange)
             layer.changeAttributeValue(fid, layer.fields().indexFromName("id"), featureId) # Since ID cannot be changed, change it back to the original
@@ -1270,7 +1009,6 @@ class AzureMapsPlugin:
             layer.addFeature(oldFeature)
 
         self.failAdd, self.failEdit, self.failDelete = [], [], []
-
 
     def on_before_commit_changes(self, layer):
         """
@@ -1372,22 +1110,21 @@ class AzureMapsPlugin:
         # ----------------- Gather edits, deletes and creates ----------------- #
         adds, edits, deletes = self._get_changes(layer)
 
-        # ----------------- Get GeoJSON Feature Exporter ----------------- #
-        exporter = self._get_feature_exporter(layer, adds, edits)
-
         # ---------------------- Loop through changes and add store them in respective commit list ---------------------- #
         addCommit, editCommit, deleteCommit = [], [], []
         # Loop through Creates
         for fid in adds:
             self.update_ids(layer, layer.getFeature(fid))
             feature = layer.getFeature(fid)
-            featureJson = self._export_feature(exporter, feature, feature['id']) # Export feature to GeoJSON
+            exporter = self._get_feature_exporter(layer, feature) # Feature exporter
+            featureJson = self._export_feature(exporter, feature, self._get_feature_attribute(feature, "id")) # Export feature to GeoJSON
             addCommit.append((fid, feature, featureJson))
 
         # Loop through Edits
         for fid in edits:
-            self.update_ids(layer, layer.getFeature(fid))
+            # self.update_ids(layer, layer.getFeature(fid))
             feature = layer.getFeature(fid)
+            exporter = self._get_feature_exporter(layer, feature) # Feature exporter
             key = layer.name() + ":" + str(fid)
 
             # If ID is a change, take that ID, else take the newly added id
@@ -1398,7 +1135,7 @@ class AzureMapsPlugin:
                 editCommit.append((fid, temp_id, feature, oldFeature, featureJson))
             else: 
                 adds[fid] = None # Remove ID from adds, to not double count, if the change is an add
-                featureJson = self._export_feature(exporter, feature, feature['id']) # Export feature to GeoJSON
+                featureJson = self._export_feature(exporter, feature, self._get_feature_attribute(feature, "id")) # Export feature to GeoJSON
                 addCommit.append((fid, feature, featureJson)) # Add it to the add list
         
         # Loop through Deletes
@@ -1415,8 +1152,8 @@ class AzureMapsPlugin:
         """
         changes = {}
         for i,field in enumerate(newFeature.fields()):
-            if newFeature[field.name()] != oldFeature[field.name()]:
-                changes[field.name()] = (newFeature[field.name()], i)
+            if self._get_feature_attribute(newFeature, field.name()) != self._get_feature_attribute(oldFeature, field.name()):
+                changes[field.name()] = (self._get_feature_attribute(newFeature, field.name()), i)
         return changes
 
     def _commit_changes(self, layer, addCommit, editCommit, deleteCommit, progress):
@@ -1430,6 +1167,7 @@ class AzureMapsPlugin:
             3. Used PUT in case of Patch as well, since QGIS returns the full feature, and not just the edited parts.
         """
 
+        collectionName = self.layerName_collectionName_map[layer.name()]
         failAdd, failEdit, failDelete = [], [], []
 
         layer.startEditing()
@@ -1437,7 +1175,7 @@ class AzureMapsPlugin:
         # ---------------------- Commit changes to Feature Service ---------------------- #
         # Looping through creates
         for fid, feature, body_str in addCommit:
-            commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=layer.name())
+            commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=collectionName)
             resp = self.requestHandler.post_request(url=commit_url, body=body_str)
             progress.next("Creating new features...")
             if resp["success"]: 
@@ -1449,7 +1187,7 @@ class AzureMapsPlugin:
                 
         # Looping through edits
         for fid, featureId, feature, oldFeature, body_str in editCommit:
-            commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=layer.name()+"45", featureId=featureId)
+            commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=collectionName, featureId=featureId)
             resp = self.requestHandler.put_request(url=commit_url, body=body_str)
             progress.next("Editing features...")
             if resp["success"]:
@@ -1462,7 +1200,7 @@ class AzureMapsPlugin:
 
         # Looping through deletes
         for fid, featureId, oldFeature in deleteCommit:
-            commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=layer.name(), featureId=featureId)
+            commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=collectionName, featureId=featureId)
             resp = self.requestHandler.delete_request(url=commit_url)
             progress.next("Deleting features...")
             if resp["success"]:
@@ -1480,15 +1218,12 @@ class AzureMapsPlugin:
         """Handle changes to other fields, if any, due to the creates and edits"""
 
         successAdd, successEdit, _ = self._get_changes(layer)
-
+            
         # Update the floor field if it exists, for all successful creates and edits
         floor_index = layer.dataProvider().fieldNameIndex("floor")
         if floor_index != -1:
             self.update_floors(successAdd, layer, floor_index)
             self.update_floors(successEdit, layer, floor_index)
-
-        # Update New Features List to populate id_map once features are created
-        self.new_feature_list = list(successAdd.keys())
 
         # (if modified) Update the layer group name w/ updated facility layer
         self._update_layer_group_name(layer)
@@ -1500,10 +1235,10 @@ class AzureMapsPlugin:
         # If any errors, display all of them appropriately
         if (len(failAdd)+len(failDelete)+len(failEdit)>0):
             self.logger.writeErrorLogChanges([r['response'] for _, _, r in failAdd + failEdit + failDelete])
-            error_list = ["Add Failed \t Feature name: {} \t Details: {}".format(feature['name'], resp["error_text"]) for (_, feature, resp) in failAdd] + \
-                        ["Edit Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(feature['id'], feature['name'], resp["error_text"]) 
+            error_list = ["Add Failed \t Feature name: {} \t Details: {}".format(self._get_feature_attribute(feature, "name"), resp["error_text"]) for (_, feature, resp) in failAdd] + \
+                        ["Edit Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(self._get_feature_attribute(feature, "id"), self._get_feature_attribute(feature, "name"), resp["error_text"]) 
                             for (_, (feature, _), resp) in failEdit] + \
-                        ["Delete Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(feature['id'], feature['name'], resp["error_text"]) 
+                        ["Delete Failed \t FeatureId: {} \t Feature name: {} \t Details: {}".format(self._get_feature_attribute(feature, "id"), self._get_feature_attribute(feature, "name"), resp["error_text"]) 
                          for (_, feature, resp) in failDelete]
             self.dialogBox.QMessageCrit(
                 title="Save Failed!",
@@ -1521,42 +1256,25 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
             )
             self._handle_error_msgBar(layer.name(), is_fail=False)
         return
-    
-    def _handle_error_msgBar(self, layer_name, is_fail):
-        """Handle the error display in message bar"""
-        if is_fail: # If there is a failure, add to list of failed classes
-            self.saveFailedClasses.add(layer_name)
-        else: # If there is no failure, remove from list of failed classes
-            self.saveFailedClasses.discard(layer_name)
-        if self.saveFailedClasses: # If there are any failed classes, display the message bar
-            saveFailedStrings = ['"{}"'.format(f) for f in self.saveFailedClasses]
-            self.msgBar.QMessageBarPopPushCrit(
-                title="Save Failed!",
-                text="Your saves in {} layer(s) are still pending".format(', '.join(saveFailedStrings)),
-                item_id="save_failed",
-                showMore = """Your changes are still present in QGIS. Please fix the issues and try saving again.
-Logs can be found at {}""".format(self.logger.errorLogFolderPath))
-        else:
-            self.msgBar.pop(item_id="save_failed")
 
-    def _get_feature_exporter(self, layer, adds, edits):
-        """Prepare Exporter to export features to GeoJSON"""
-        # https://qgis.org/pyqgis/3.8/core/QgsJsonExporter.html
-        # Only needed in case we are adding/changing a feature
+    def _get_feature_exporter(self, layer, feature):
+        """
+        Prepare Exporter to export features to GeoJSON. Needed while adding/changing feature
+        https://qgis.org/pyqgis/3.8/core/QgsJsonExporter.html
+        """
         exporter = QgsJsonExporter(layer, 7)
-        if len(edits) != 0 or len(adds) != 0:
-            if len(edits)!=0:
-                fid = next(iter(edits)) # Get the first change, if exists
-            else:
-                fid = next(iter(adds)) # Otherwise get the first add.
-            feature = layer.getFeature(fid)
-            attributeList = self.schema_map[layer.name()]
-            includedList = []
-            for attr in attributeList:
-                index = feature.fieldNameIndex(attr)
-                if index != -1:
-                    includedList.append(index)
-            exporter.setAttributes(includedList)
+        collectionName = self.layerName_collectionName_map[layer.name()]
+        collection_definition = self.collectionName_collectionDef_map[collectionName] # Get collection definition
+        attributeList = [attr["name"] for attr in collection_definition.get("properties", [])] # Get list of attributes
+        includedList = []
+        # Only add features that were populated by user and are in the definition 
+        # (Since we can't make new attributes using Features service)
+        for attr in attributeList:
+            index = feature.fieldNameIndex(attr)
+            if index != -1:
+                includedList.append(index)
+        exporter.setAttributes(includedList)
+
         return exporter
 
     def _export_feature(self, exporter, feature, input_id):
@@ -1567,64 +1285,45 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
         return json.dumps(featureJson)
 
     def update_ids(self, layer, feature):
-        """Update background facilityId, categoryId, levelId, addressId based on the value in selected box"""
-        for key in self.relation_map:
-            if feature.fieldNameIndex(key) != -1:
-                # Temp fix until schema is changed - PBI 6216025
-                if key == "levels_reached":
-                    lvl_list = feature.attribute(self.relation_map[key])
-                    lvls_reached = feature.attribute(key)
-                    for lvl in lvls_reached:
-                        if lvl not in lvl_list:
-                            lvl_list.append(lvl)
-                    layer.changeAttributeValue(
-                        feature.id(),
-                        feature.fieldNameIndex(self.relation_map[key]),
-                        lvl_list,
-                    )
-                else:
-                    layer.changeAttributeValue(
-                        feature.id(),
-                        feature.fieldNameIndex(self.relation_map[key]),
-                        feature.attribute(key),
-                    )
+        collectionName = self.layerName_collectionName_map[layer.name()]
+        referential_integrity_map = self.collectionName_referential_integrity_map[collectionName]
+        for ref_field_name, ref_field_id in referential_integrity_map.items():
+            field_index = self._get_feature_field_index(feature, ref_field_id)
+            layer.changeAttributeValue(
+                feature.id(),
+                field_index,
+                self._get_feature_attribute(feature, ref_field_name),
+            )
 
     def update_floors(self, fids, layer, floor_index):
-        for fid in fids:
+        for fid in fids: # Loop through all features
             feature = layer.getFeature(fid)
-            if feature.fieldNameIndex("levelId") != -1:
-                floor = self.level_to_ordinal[feature["levelId"]]
-                if floor is not None:
-                    layer.changeAttributeValue(
-                        layer.getFeature(fid).id(), floor_index, str(floor)
-                    )
-            elif feature.fieldNameIndex("unitId") != -1:
-                unitId = feature["unitId"]
-                if unitId is not None:
-                    floor = self.space_to_floors.get(unitId, None)
-                    if floor is not None:
-                        layer.changeAttributeValue(
-                            layer.getFeature(fid).id(), floor_index, str(floor)
-                        )
-            elif feature.fieldNameIndex("ordinal") != -1:
-                ordinal = feature["ordinal"]
-                if ordinal is not None:
-                    layer.changeAttributeValue(
-                        layer.getFeature(fid).id(), floor_index, str(ordinal)
-                    )
-
-                    if "id" in feature:
-                        feature_id = feature["id"]
-                        del_ordinal = self.level_to_ordinal[feature_id]
-                        self.level_picker.remove(del_ordinal)
-                        del self.ordinal_to_level[del_ordinal]
-
-                    for feature in layer.getFeatures():
-                        ordinal = feature["ordinal"]
-                        self.level_picker.append(ordinal)
-
-                    self.level_to_ordinal[feature["id"]] = feature["ordinal"]
-                    self.ordinal_to_level[feature["ordinal"]] = feature["id"]
+            levelId, unitId, featureId, ordinal = self._get_feature_attributes(feature, ["levelId", "unitId", "id", "ordinal"])
+            """unitId, levelId, and ordinal are mutually exclusive
+            unitId is used for Facility_2 ontology, in pointElement, lineElement, areaElement feature classes
+            levelId is used for all feature classes in CustomOntology and Facility_2, except level and facility
+            ordinal is used for level feature class 
+            """
+            if unitId != None and self.ontology == Constants.Ontology.FACILITY_2: # Update floor using unitId, only for Facility_2 ontology
+                floor = self.unitId_ordinal_map[unitId]
+                layer.changeAttributeValue(fid, floor_index, str(floor))
+            elif levelId != None: # Update floor using levelId
+                floor = self.levelId_ordinal_map[levelId]
+                layer.changeAttributeValue(fid, floor_index, str(floor))
+            elif ordinal: # Update floor using ordinal
+                layer.changeAttributeValue(fid, floor_index, str(ordinal))
+                # This means changes to level layer has been made, need to update floor-picker
+                # First delete the ordinal related to the ID from the floor picker
+                del_ordinal = self.levelId_ordinal_map[featureId]
+                self.level_picker.remove(del_ordinal)
+                del self.ordinal_levelId_map[del_ordinal]
+                # Update layer picker with latest floor information. Handles repeat cases and sorted updates of floor numbers
+                for innerFeature in layer.getFeatures():
+                    self.level_picker.append(self._get_feature_attribute(innerFeature, "ordinal"))
+                # Update mappings
+                self.levelId_ordinal_map[featureId] = ordinal
+                self.ordinal_levelId_map[ordinal] = featureId
+            self.refresh_floor_picker()
 
     def _set_widget_layer_id(self, layer_object, enum_name):
         enum_layer_id = self.enum_ids[enum_name]
@@ -1632,43 +1331,36 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
             layer_object.editFormConfig().setWidgetConfig(
                 enum_name, {"Layer": enum_layer_id}
             )
-
-    # Converts QGIS multi-select string to array of strings
-    # Ex. 'left' => 'left', 'NULL' => None, False => False, "{}" => []
-    # Ex. "{ 'left, 'center', 'right' }" => ['left', 'center', 'right']
+    
     def _qgis_value_converter(self, qgis_value):
-        # If it is not a string, passthrough
-        if not isinstance(qgis_value, str):
+        """
+        Converts QGIS multi-select string to array of strings
+        Ex.'NULL' => None, "{ 'left, 'center', 'right' }" => ['left', 'center', 'right']
+        """
+        qgis_value = qgis_value.strip() # Remove leading and trailing spaces
+        if not isinstance(qgis_value, str): # Continue if not string
+            return qgis_value 
+        if qgis_value == "NULL": # Null value
+            return None 
+        if not qgis_value.startswith("{") or not qgis_value.endswith("}"): # If not array
             return qgis_value
-        # If NULL string, QGIS treats them as null value
-        if qgis_value == "NULL":
-            return None
-        # If array, QGIS returns with { } instead of [ ]
-        if not qgis_value.startswith("{") or not qgis_value.endswith("}"):
-            return qgis_value
-        # Convert QGIS array into JSON array in string format
-        qgis_value = qgis_value[1:-1].split(",")
-        if qgis_value[0] == "":
-            qgis_value = []
+        
+        qgis_value_split = qgis_value[1:-1].split(",") # Remove brackets and split by comma, to make array
+        qgis_value_list = [s.strip() for s in qgis_value_split if s.strip()] # Remove spaces, empty strings
+        if not qgis_value_list: 
+            return [] # If no elements, empty array
         return qgis_value
 
-    # Converts QGIS string into a valid JSON string
     def _qgis_values_resolver(self, qgis_str):
-        # Load QGIS string as a JSON object
+        """Converts QGIS string into a valid JSON string"""
         json_obj = json.loads(qgis_str)
-        # Retrieve properties
         json_props = json_obj.get("properties", {})
-        # Convert properties' values to be valid JSON values
         json_obj["properties"] = dict(
-            map(
-                lambda item: (item[0], self._qgis_value_converter(item[1])),
-                json_props.items(),
-            )
+            map(lambda item: (item[0], self._qgis_value_converter(item[1])), json_props.items())
         )
         # Remove entries with None value to reduce payload
-        json_obj["properties"] = {
-            k: v for k, v in json_obj["properties"].items() if v is not None
-        }
+        json_obj["properties"] = { k: v for k, v in json_obj["properties"].items() 
+                                  if v is not None}
 
         # Handle obstruction area
         if "isObstruction" in json_obj["properties"]:
@@ -1733,11 +1425,13 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
             self.hideNode(self.root.findLayer(mapLayer.id()))
 
     def _on_layer_removed(self, node, indexFrom, indexTo):
-        if node == self.base_group:
-            self.level_picker.clear()
+        # BUG: This is not working as expected
+        pass
+        # if node == self.base_group:
+        #     self.level_picker.clear()
 
     def _update_layer_group_name(self, facility_layer):
-        dataset_id = self.dlg.datasetId.text()
+        dataset_id = self.current_dataset_id
         if (
             facility_layer is None
             or not callable(getattr(facility_layer, "name", None))
