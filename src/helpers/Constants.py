@@ -51,6 +51,8 @@ class Constants:
         PATCH = "{base}/collections/{collectionId}/items/{featureId}"
         PUT = "{base}/collections/{collectionId}/items/{featureId}"
 
+        LIST_DATASETS = "{host}/datasets"
+
     class HTTPS:
         class Methods:
             PUT = "PUT"
@@ -64,7 +66,7 @@ class Constants:
             PATCH_JSON = "application/merge-patch+json"
 
         MAX_RETRIES = 3
-        RETRY_INTERVAL = 0.5 # 0.5 seconds
+        RETRY_INTERVAL = 1 # 1 seconds
         GET_LIMIT = 500
 
     class API_Versions:
@@ -73,6 +75,7 @@ class Constants:
 
     WFS  = "wfs"
     FEATURES = "features"
+    DATASETS = "datasets"
     AZURE_MAPS = "Azure Maps"
     AZURE_MAPS_PLUGIN_NAME = "QGISPlugin" # TODO: FINALIZE
 
@@ -91,6 +94,7 @@ class Constants:
         POLYGON = "polygon"
         MULTIPOLYGON = "multipolygon"
         NOGEOMETRY = "nogeometry"
+        GEOMETRYCOLLECTION = "geometrycollection"
         INVALID = "invalid"
 
         @classmethod
@@ -100,8 +104,6 @@ class Constants:
                 if member.value == value:
                     return member
             if value == "": return cls.NOGEOMETRY
-            # BUG: Ignoring geometryCollection for now. FIX in other places too.
-            if value == "geometrycollection": return cls.INVALID
             return cls.INVALID
 
         @classmethod

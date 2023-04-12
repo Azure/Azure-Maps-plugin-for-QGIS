@@ -104,16 +104,15 @@ class AzureMapsPluginRequestHandler:
     def _get_next_link(self, response):
         """Gets the next link from the response"""
         r_json = response.json()
-        links = r_json["links"]
+        links = r_json.get("links", [])
         for link in links:
-            if link["rel"] == "next":
-                return link["href"]
+            if link.get("rel", "") == "next":
+                return link.get("href", None)
         return None
 
     def make_request(self, url, request_type, body=None, content_type=None, **kwargs):
         """Makes a request to the given url""" 
         url = self._format_url(url, **kwargs) # Format the url
-        error_text=None
         if(request_type == Constants.HTTPS.Methods.GET): method = requests.get
         elif(request_type == Constants.HTTPS.Methods.POST): method = requests.post
         elif(request_type == Constants.HTTPS.Methods.PUT): method = requests.put
@@ -125,7 +124,8 @@ class AzureMapsPluginRequestHandler:
 
         retry, retry_counter = True, 0
 
-        while retry:
+        while retry and retry_counter < Constants.HTTPS.MAX_RETRIES:
+            error_text, r = None, None
             try:
                 r = method(url, data=body, headers=headers, timeout=60, verify=verify_ssl) # Make the request
             except requests.exceptions.Timeout as err:
@@ -137,7 +137,6 @@ class AzureMapsPluginRequestHandler:
             except Exception as err:
                 error_text = "Unexpected exception occurred while sending {} request. Error: {}".format(request_type, str(err))
             
-            retry = False # No need to retry, except in case of error
             if error_text: # Error occurred before the request was made
                 resp = {
                     "success": False,
@@ -149,25 +148,27 @@ class AzureMapsPluginRequestHandler:
                     error_text = "Error occurred while sending {} request.".format(request_type)
                 else:
                     error_text = r.json()["error"]["message"]
-                    
                 resp = {
                     "success": False,
                     "error_text": error_text,
                     "response": r
                 }
-                if retry_counter < Constants.HTTPS.MAX_RETRIES:
-                    retry = True # Retry
-                    retry_counter += 1
-                    time.sleep(retry_counter * Constants.HTTPS.RETRY_INTERVAL) # Wait before retrying
-                    self._response_logging(url=url, request_type=request_type, resp=resp) # Log the response
-                    self.logger.QLogCrit(status=Constants.Logs.FAILURE, 
-                                         status_text="API called failed. Attempt {}. Retrying...".format(retry_counter)) # Log the retry
             else: # Success!
                 resp = {
                     "success": True,
                     "error_text": None,
                     "response": r
                 }
+                retry = False
+            
+            # If there is an error, error_text will be populated
+            if error_text:
+                retry_counter += 1
+                time.sleep(retry_counter * Constants.HTTPS.RETRY_INTERVAL) # Wait before retrying
+                self._response_logging(url=url, request_type=request_type, resp=resp) # Log the response
+                self.logger.QLogCrit(status=Constants.Logs.FAILURE, 
+                                        status_text="API called failed. Attempt {}. Retrying...".format(retry_counter)) # Log the retry
+        
         # Log the response/error
         self._response_logging(url=url, request_type=request_type, resp=resp)
         return resp
@@ -189,7 +190,10 @@ class AzureMapsPluginRequestHandler:
             
             if single_request: break # If single request, break after first response
             next_link = self._get_next_link(resp["response"]) # Get next link
-            url = self._format_url(next_link, query_params={"limit": limit}) # Update url for next request
+            if next_link:
+                url = self._format_url(next_link, query_params={"limit": limit}) # Update url for next request
+            else:
+                break # No next link, break
         return returnDict
     
     def get_request_parallel(self, task, _id, request_type, url, limit, **kwargs):

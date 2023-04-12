@@ -108,7 +108,7 @@ class AzureMapsPlugin:
         """Create helpers for the plugin. Setup Logger and AzureMapsRequestHandler"""
         self.logger = AzureMapsPluginLogger(self.iface,
                             hideSubscriptionKey=True,
-                            subscription_key=self.dlg.sharedKey.text(),
+                            subscription_key=self.dlg.subKey.text(),
                             autoLogToFile=True,
                             logFolder=self.dlg.logsFolderPicker.filePath(), 
                             debugLog=True)
@@ -124,21 +124,30 @@ class AzureMapsPlugin:
         """Setup helpers once the parameters are set by the user."""
         self.logger.set_parameters(
             subscription_key=self._get_subscription_key(),
-            dataset_id=self.dlg.datasetId.text(),
-            logFolder=self.dlg.logsFolderPicker.filePath()
+            dataset_id=self._get_datasetId(),
+            logFolder=self._get_logs_folder()
         )
         self.requestHandler.set_parameters(
             subscription_key=self._get_subscription_key(),
-            geography=self.dlg.geographyDropdown.currentText(),
+            geography=self._get_geography(),
             api_version=self.apiVersion,
             logger=self.logger
         )
         self.msgBar.set_parameters(logger=self.logger)
 
     def _get_subscription_key(self):
-        return self.dlg.sharedKey.text()
+        return self.dlg.subKey.text()
+    
+    def _get_datasetId(self):
+        return self.dlg.datasetId.currentText()
+    
+    def _get_geography(self):
+        return self.dlg.geographyDropdown.currentText()
+    
+    def _get_logs_folder(self):
+        return self.dlg.logsFolderPicker.filePath()
 
-    def tr(self):
+    def translate(self):
         """Get the translation for plugin name using Qt translation API."""
         return QCoreApplication.translate("AzureMapsPlugin", Constants.AZURE_MAPS)
 
@@ -147,7 +156,7 @@ class AzureMapsPlugin:
         icon = QIcon(Constants.Paths.PLUGIN_CIRCLE_ICON)
         
         # Make the action
-        text = self.tr()
+        text = self.translate()
         parent = self.iface.mainWindow()
         callback = self.run
         action = QAction(icon, text, parent)
@@ -192,7 +201,7 @@ class AzureMapsPlugin:
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
-            self.iface.removePluginVectorMenu(self.tr(), action)
+            self.iface.removePluginVectorMenu(self.translate(), action)
             self.iface.removeToolBarIcon(action)
 
         # Delete toolbar level picker on plugin unload
@@ -206,10 +215,9 @@ class AzureMapsPlugin:
         if self.first_start:
             self.first_start = False
             self.dlg.getFeaturesButton.clicked.connect(self.get_features_clicked)
-            self.dlg.getFeaturesButton_2.clicked.connect(self.get_features_clicked)
-            self.dlg.closeButton.clicked.connect(self.close_button_clicked)
-            self.dlg.floorPicker.currentIndexChanged.connect(self.floor_picker_changed)
-            self.dlg.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.WindowSystemMenuHint)
+            self.dlg.listDatasetButton.clicked.connect(self.list_datasets_clicked)
+            self.dlg.datasetId.currentTextChanged.connect(lambda text: self.list_datasets_changed(text))
+            self.dlg.setWindowFlags(Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
 
         # Close dialog if it is already open - mocks dialog toggle behavior
         if self.dlg.isVisible():
@@ -273,7 +281,7 @@ class AzureMapsPlugin:
         Stop progress bar
         """
         if resp["error_text"]:
-            error_text = "{} Please try again later. Error: {}".format(base_error, resp["error_text"])
+            error_text = "{} Please try again. Error: {}".format(base_error, resp["error_text"])
             if "response" in resp and resp["response"]: # status code is available
                 error_text = "{} Response status code {}. Error: {}".format(
                         base_error, resp["response"].status_code, resp["error_text"])
@@ -282,17 +290,19 @@ class AzureMapsPlugin:
                 text=base_error,
                 detailedText=error_text
             )
+            self.logger.QLogCrit(error_text + "Response: {}".format(resp["response"]))
             self.reset(progress)
             return False
         return True
     
     def reset(self, progress=None):
+        # Clear QGIS layers
+        self.root.removeChildNode(self.base_group)
+        # Clear internal variables
+        self.base_group = None # Remove base group
         self.current_dataset_id = None # Remove current dataset ID
         self.level_picker.clear() # Clear level picker
         self.id_map = {} # Clear id map
-        # Clear QGIS layers
-        self.root.removeAllChildren()
-        self.base_group = None
         if progress: # Close progress bar
             progress.close()
     
@@ -389,28 +399,53 @@ class AzureMapsPlugin:
                 table_config.setColumnHidden(attribute_index, True)
         return table_config
 
-    def _set_layer_labeling(self, layer):
-        """Sets the labeling for a layer"""
+    def _set_layer_labeling(self, layer, geometryType):
+        """Sets the labeling for a layer, based on geometryType"""
         layer_settings  = QgsPalLayerSettings()
-        layer_settings.fieldName = "name" # field of feature to use for labeling
-        layer_settings.FontSizeUnit = 9 # font size
-        layer_settings.enabled = True
-        layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-        layer.setLabelsEnabled(True) # enable labeling
-        layer.setLabeling(layer_settings)
-        layer.triggerRepaint()        
+        renderer = layer.renderer()
+        symbol = None if not renderer else renderer.symbol()
+        if geometryType == Constants.GEOMETRY_TYPE.POLYGON or geometryType == Constants.GEOMETRY_TYPE.MULTIPOLYGON:
+            layer_settings.fieldName = "name" # field of feature to use for labeling
+            layer_settings.FontSizeUnit = 9 # font size
+            layer_settings.enabled = True
+            layer_settings.Color = QColor.fromRgb(255,0,0) # Label color
+            layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
+            layer.setLabelsEnabled(True) # enable labeling
+            layer.setLabeling(layer_settings)
+
+            if symbol: symbol.setColor(QColor.fromRgb(0,0,0,0))
+        else:
+            if symbol: symbol.setColor(QColor.fromRgb(0,0,0))
+        
+        layer.triggerRepaint() 
+        self.iface.layerTreeView().refreshLayerSymbology(layer.id())
+
+    def list_datasets_clicked(self):
+        self._setup_helpers() # setup helper classes
+        progress = ProgressIterator(
+            msg="Fetching Dataset Information...", window_title="Fetching Datasets",
+            setCancelButtonNone=True, disableCloseButton=True, alwaysOnTop=False
+        )
+        progress.show()
+        QApplication.processEvents()
+        progress.set_maximum(2)
+
+        self.datasets_url = Constants.API_Paths.LIST_DATASETS.format(host=self.requestHandler.host)
+        resp = self.requestHandler.get_request(self.datasets_url)
+        success = self._get_request_base_error(resp, resp["error_text"], progress) # call error handling function
+        if not success: return
+        progress.next("Parsing Dataset Information...")
+        r = resp["response"]
+        dataset_ids_descriptions = [(dataset.get("datasetId", None), dataset.get("description", "--No Description--")) for dataset in r.get("datasets",[])]
+        self.dlg.datasetId.addItems(['{}\n{}'.format(uid, d) for uid, d in dataset_ids_descriptions if uid != None])
+
+    def list_datasets_changed(self, text):
+        self.dlg.datasetId.setEditText(text.split('\n')[0].strip())
 
     def get_features_clicked(self):
-        self.close_button_clicked()
-        self._getFeaturesButton_setEnabled(False)
-        self.level_picker.clear()
-        dataset_id = self.dlg.datasetId.text()
-        self.id_map = {}
-        self._setup_helpers()
-        self.logger.QLogInfo("{} Loading Azure Maps dataset with ID: {} {}".format('-'*15, dataset_id, '-'*15))
-
         # Condition: Only one dataset is allowed at a time
-        if self.current_dataset_id is not None:
+        dataset_id = self._get_datasetId()
+        if self.current_dataset_id is not None and len(self.root.children())>0:
             warning_response = self.dialogBox.QMessageWarn(
                 title="Warning",
                 text="""We can only load one dataset at a time. 
@@ -422,9 +457,7 @@ class AzureMapsPlugin:
             if warning_response == QMessageBox.Cancel:
                 return self._getFeaturesButton_setEnabled(True)
             if warning_response == QMessageBox.Yes:
-                # self.root.removeChildNode(self.root.findGroup(self.current_dataset_id))
-                self.root.removeAllChildren()
-                self.base_group = None
+                self.reset()
             else:
                 self.msgBar.QMessageBarCrit(
                     title="Error",
@@ -432,33 +465,19 @@ class AzureMapsPlugin:
                 )
                 return self._getFeaturesButton_setEnabled(True)
 
+        self.reset()
+        self.close_button_clicked()
+        self._getFeaturesButton_setEnabled(False)
+        self._setup_helpers()
+        self.logger.QLogInfo("{} Loading Azure Maps dataset with ID: {} {}".format('-'*15, dataset_id, '-'*15))
+
+        start_time = time.time()
         self.current_dataset_id = dataset_id
-        self.base_group = None
-
-        # Determine bounding box.
-        bbox = ""
-        min_x = self.dlg.extentWest.text().strip()
-        min_y = self.dlg.extentSouth.text().strip()
-        max_x = self.dlg.extentEast.text().strip()
-        max_y = self.dlg.extentNorth.text().strip()
-
-        if min_x != "" or min_y != "" or max_x != "" or max_y != "":
-            if min_x == "":
-                min_x = "-180"
-            if min_y == "":
-                min_y = "-90"
-            if max_x == "":
-                max_x = "180"
-            if max_y == "":
-                max_y = "90"
-            bbox = "&" + urllib.parse.urlencode(
-                {"bbox": "{},{},{},{}".format(min_x, min_y, max_x, max_y)}
-            )
 
         # Start progress dialog
         progress = ProgressIterator(
             msg="Loading Dataset...", window_title="Retrieving features",
-            setCancelButtonNone=True, disableCloseButton=True, alwaysOnTop=True
+            setCancelButtonNone=True, disableCloseButton=True, alwaysOnTop=False
         )
         progress.show()  # Immediately show the progress bar
         QApplication.processEvents()
@@ -466,7 +485,7 @@ class AzureMapsPlugin:
         # Get dataset metadata.
         self.features_url = Constants.API_Paths.BASE.format(host=self.requestHandler.host, apiName=self.apiName, datasetId=dataset_id)
         resp = self.requestHandler.get_request(Constants.API_Paths.GET_COLLECTIONS.format(base=self.features_url))
-        success = self._get_request_base_error(resp, "Unable to read dataset metadata.", progress) # call error handling function
+        success = self._get_request_base_error(resp, resp["error_text"], progress) # call error handling function
         if not success:
             return self._getFeaturesButton_setEnabled(True)
         
@@ -505,7 +524,7 @@ class AzureMapsPlugin:
             globals()['data_task_'+collectionName] = QgsTask.fromFunction(
                 "Getting " + collectionName + " collection",
                 self.requestHandler.get_request_parallel,
-                collectionName, "data", data_link["href"] + bbox, 500
+                collectionName, "data", data_link["href"], 5000
             )
             QgsApplication.taskManager().addTask(globals()['data_task_'+collectionName]) # Add task to global queue
             taskList.append(globals()['data_task_'+collectionName]) # Add task to local list
@@ -514,7 +533,7 @@ class AzureMapsPlugin:
             globals()['definition_task_'+collectionName] = QgsTask.fromFunction(
                 "Getting " + collectionName + " collection definition",
                 self.requestHandler.get_request_parallel,
-                collectionName, "definition", meta_link["href"], 500
+                collectionName, "definition", meta_link["href"], 5000
             )
             QgsApplication.taskManager().addTask(globals()['definition_task_'+collectionName])
             taskList.append(globals()['definition_task_'+collectionName])
@@ -569,6 +588,7 @@ class AzureMapsPlugin:
         _collectionName_referential_integrity_map = {} # Map of collectionName and referential integrity
         _collectionName_required_properties_list_map = {} # Map of collectionName and required properties list
         _layerName_geometryType_map = {} # Map of layerName and geometryType
+        _collectionName_geometryCollection_map = {} # Map of collectionName and geometryCollection
         for collectionName in Constants.Ontology.get_display_order(self.ontology, collections):
             try:
                 # Handle metadata response
@@ -584,7 +604,7 @@ class AzureMapsPlugin:
                 if not success: return
                 self.logger.QLogDebug("Loading {} collection".format(collectionName))
                 # Load the data of the collection into a layer
-                geometryType_layer_map, referential_integrity_map, required_properties_list = \
+                geometryType_layer_map, referential_integrity_map, required_properties_list, geometryCollectionList = \
                     self.load_items(collectionName, data_response, 
                                     self.collectionName_collectionDef_map[collectionName], self.base_group)
 
@@ -596,6 +616,7 @@ class AzureMapsPlugin:
                 _collectionName_referential_integrity_map[collectionName] = referential_integrity_map  # Update the collectionName to referential integrity map
                 _collectionName_required_properties_list_map[collectionName] = required_properties_list # Update the collectionName to required properties list
                 _layerName_geometryType_map.update({l.name(): geometryType for geometryType, l in geometryType_layer_map.items()}) # Update the layerName to geometryType map
+                _collectionName_geometryCollection_map[collectionName] = [f["id"] for f in geometryCollectionList] # Update the collectionName to geometryCollection map
             except Exception as e: # Handles any accidental errors that may occur, especially in the load_items function
                 return self._get_request_base_error({"error_text": str(e)}, "Unable to load {} layer".format(collectionName), progress)
         
@@ -611,9 +632,27 @@ class AzureMapsPlugin:
         
         progress.next("Adding Creator attributes...")
         self.logger.QLogInfo("Adding Creator attributes")
+
+        """
+        QGIS doesn't support geometryCollection and hence the features won't be rendered.
+        Send a warning if geometryCollection is found. Add layer name and feature id to logs.
+        """
+        geometryCollectionFound, geometryCollectionStringList = False, []
+        for cName, geometryCollectionList in _collectionName_geometryCollection_map.items():
+            if len(geometryCollectionList) > 0:
+                geometryCollectionFound = True
+                geometryCollectionStringList.append("Layer {} with feature Ids: [{}]".format(cName, ', '.join(geometryCollectionList)))
+        if geometryCollectionFound:
+            self.msgBar.QMessageBarWarn(
+                title = "Geometry Collection found in layers",
+                text = """Layers with geometry type geometryCollection found. 
+QGIS doesn't support this type and hence these features won't be rendered. Please check logs for more information"""
+            )
+            self.logger.QLogWarn("""Geometry Collection found in layers. 
+QGIS doesn't support this type and hence these features won't be rendered. The features are affected: {}""".format(', '.join(geometryCollectionStringList)))
         
         # Facility and Level layer are mandatory
-        error_text = "Unable to load {} layer. Please try again."
+        error_text = "Unable to load {} featureClass. Please try again."
         for layer_name_check in ["facility", "level"]:
             if layer_name_check not in _collectionName_layerName_list_map:
                 return self.dialogBox.QMessageCrit(
@@ -634,10 +673,10 @@ class AzureMapsPlugin:
             collectionName = _layerName_collectionName_map[layerName]
             layer = _layerName_layer_map[layerName]
             geometryType = _layerName_geometryType_map[layerName]
-            self.logger.QLogDebug("Adding {} layer attributes".format(layerName))
-
-            if geometryType == Constants.GEOMETRY_TYPE.POLYGON or geometryType == Constants.GEOMETRY_TYPE.MULTIPOLYGON:
-                self._set_layer_labeling(layer)
+            self.logger.QLogDebug("Adding {} featureClass attributes".format(layerName))
+            
+            self._set_layer_labeling(layer, geometryType)
+            QApplication.processEvents()
                 
             ontologyClass = Constants.Facility_2 if self.ontology == Constants.Ontology.FACILITY_2 \
                                                  else Constants.CustomOntology
@@ -738,7 +777,7 @@ class AzureMapsPlugin:
         self.refresh_floor_picker()
 
         progress.next("Dataset loaded successfully.")
-        self.logger.QLogInfo("{} Datset successfully loaded {}".format('-'*10, '-'*10))
+        self.logger.QLogInfo("{} Datset loaded successfully in {} seconds{}".format('-'*10, time.time()-start_time, '-'*10))
         # Close progress dialog
         progress.close()
 
@@ -789,9 +828,12 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
         """
         Split response into a dictionary of geometry types.
         """
+        geometryCollectionList = [] # Flag to check if GEOMETRYCOLLECTION geometry type is found
         response_by_geometry_type = {geometryType: None for geometryType in geometryTypes}
         if Constants.GEOMETRY_TYPE.INVALID in response_by_geometry_type: # Remove INVALID geometry type
             del response_by_geometry_type[Constants.GEOMETRY_TYPE.INVALID]
+        if Constants.GEOMETRY_TYPE.GEOMETRYCOLLECTION in response_by_geometry_type: # Remove GEOMETRYCOLLECTION geometry type
+            del response_by_geometry_type[Constants.GEOMETRY_TYPE.GEOMETRYCOLLECTION]
         for feature in response["features"]:
             if feature["geometry"] is None: # No geometry
                 geometryType = Constants.GEOMETRY_TYPE.NOGEOMETRY
@@ -800,14 +842,17 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
 
             if geometryType == Constants.GEOMETRY_TYPE.INVALID: # Ignore INVALID geometry type
                 continue 
+            if geometryType == Constants.GEOMETRY_TYPE.GEOMETRYCOLLECTION: # GEOMETRYCOLLECTION geometry type found
+                geometryCollectionList.append(feature)
+                continue
             if geometryType not in response_by_geometry_type: # Throw exception if geometry type is not in defined list of geometry types.
-                raise Exception("Geometry type {} not found in defined list of geometry types.".format(geometryType))
+                raise Exception("Geometry type {} not found in supported list of geometry types.".format(geometryType))
             
             # Add feature to dictionary of geometry types
-            if response_by_geometry_type[geometryType] is None: 
+            if response_by_geometry_type[geometryType] is None:
                 response_by_geometry_type[geometryType] = {"type": "FeatureCollection", "features": []}
             response_by_geometry_type[geometryType]["features"].append(feature)
-        return response_by_geometry_type
+        return response_by_geometry_type, geometryCollectionList
 
     def load_items(self, name, response, collection_definition, group):
         """
@@ -824,7 +869,7 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
         geometryTypes = Constants.GEOMETRY_TYPE.from_definition(geometryTypeFromDefinition) # Returns a list of geometry types.
 
         # Split response into a dictionary of geometry types.
-        feature_collection_by_geometry_type = self._split_response_by_geometry_type(response_json, geometryTypes)
+        feature_collection_by_geometry_type, geometryCollectionList = self._split_response_by_geometry_type(response_json, geometryTypes)
         geometry_group = group
         # If there are multiple geometry types, create a group for the geometry types
         if len(feature_collection_by_geometry_type) > 1:
@@ -927,7 +972,7 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
                 self.id_map[layer.name() + ":" + str(feature.id())] = self._get_feature_attribute(feature, "id")
             
             geometry_type_layer_map[geometryType] = layer
-        return geometry_type_layer_map, referential_integrity_map, required_properties_list
+        return geometry_type_layer_map, referential_integrity_map, required_properties_list, geometryCollectionList
 
     def on_fields_changed(self, layer):
         self.dialogBox.QMessageWarn(
@@ -1027,7 +1072,7 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
         # ----------------- Progress Bar and Logger Setup ----------------- #
         progress = ProgressIterator( # Setup Progress Bar
             msg="Validating Changes...", window_title="Committing Changes",
-            setCancelButtonNone=True, disableCloseButton=True, alwaysOnTop=True
+            setCancelButtonNone=True, disableCloseButton=True, alwaysOnTop=False
         )
         progress.show()
         QApplication.processEvents()
@@ -1393,7 +1438,7 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
             self.toolbar_level_picker
         )
         self.level_picker = LevelPicker(
-            [self.toolbar_level_picker, self.dlg.floorPicker]
+            [self.toolbar_level_picker]
         )
 
     def _open_welcome_message(self):
@@ -1405,7 +1450,6 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
 
     def _getFeaturesButton_setEnabled(self, boolean):
         self.dlg.getFeaturesButton.setEnabled(boolean)
-        self.dlg.getFeaturesButton_2.setEnabled(boolean)
 
     def hideGroup(self, group):
         if isinstance(group, QgsLayerTreeGroup):
