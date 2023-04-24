@@ -9,6 +9,8 @@ class ONTOLOGY:
         
     @classmethod
     def get_display_order(cls, ontology, collections):
+        collectionNames = [c["id"] for c in collections]
+        collectionNames_lower = [c.lower().strip() for c in collectionNames]
         if ontology == cls.FACILITY_1:
             return [
                 "category",
@@ -39,21 +41,24 @@ class ONTOLOGY:
                 "facility",
             ]
             defined_collection_order_lower = [c.lower().strip() for c in defined_collection_order]
-            other_collections = [c["id"] for c in collections if c["id"].lower().strip() not in defined_collection_order_lower]
+            other_collections = [c for c in collectionNames if c.lower().strip() not in defined_collection_order_lower]
             return defined_collection_order + other_collections
-        elif ontology == cls.CUSTOM or ontology == cls.NOONTOLOGY:
-            defined_collection_order = [
+        elif ontology == cls.CUSTOM: # Includes NoOntology, hence only using collectionNames if present in collections
+            pre_defined_collection_order = [
                 "level",
                 "facility",
             ]
+            defined_collection_order = [c for c in pre_defined_collection_order if c.lower().strip() in collectionNames_lower] # Only include if collectionName is in collections
             defined_collection_order_lower = [c.lower().strip() for c in defined_collection_order]
-            other_collections = [c["id"] for c in collections if c["id"].lower().strip() not in defined_collection_order_lower]
+            other_collections = [c for c in collectionNames if c.lower().strip() not in defined_collection_order_lower]
             return other_collections + defined_collection_order
         else:
             return []
         
     @classmethod
     def get_loading_order(cls, ontology, collections):
+        collectionNames = [c["id"] for c in collections]
+        collectionNames_lower = [c.lower().strip() for c in collectionNames]
         if ontology == cls.FACILITY_1:
             return [
                 "category",
@@ -84,15 +89,16 @@ class ONTOLOGY:
                 "opening"
             ]
             defined_collection_order_lower = [c.lower().strip() for c in defined_collection_order]
-            other_collections = [c["id"] for c in collections if c["id"].lower().strip() not in defined_collection_order_lower]
+            other_collections = [c for c in collectionNames if c.lower().strip() not in defined_collection_order_lower]
             return defined_collection_order + other_collections
-        elif ontology == cls.CUSTOM or ontology == cls.NOONTOLOGY:
-            defined_collection_order = [
+        elif ontology == cls.CUSTOM:
+            pre_defined_collection_order = [
                 "level",
                 "facility",
             ]
+            defined_collection_order = [c for c in pre_defined_collection_order if c.lower().strip() in collectionNames_lower] # Only include if collectionName is in collections
             defined_collection_order_lower = [c.lower().strip() for c in defined_collection_order]
-            other_collections = [c["id"] for c in collections if c["id"].lower().strip() not in defined_collection_order_lower]
+            other_collections = [c for c in collectionNames if c.lower().strip() not in defined_collection_order_lower]
             return defined_collection_order + other_collections
-        else:
+        else: # Including NoOntology
             return []

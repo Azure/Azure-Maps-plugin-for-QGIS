@@ -217,7 +217,7 @@ class AzureMapsPlugin:
             self.dlg.getFeaturesButton.clicked.connect(self.get_features_clicked)
             self.dlg.listDatasetButton.clicked.connect(self.list_datasets_clicked)
             self.dlg.datasetId.currentTextChanged.connect(lambda text: self.list_datasets_changed(text))
-            self.dlg.setWindowFlags(Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
+            self.dlg.setWindowFlags(Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint)
 
         # Close dialog if it is already open - mocks dialog toggle behavior
         if self.dlg.isVisible():
@@ -332,23 +332,23 @@ class AzureMapsPlugin:
 
     def _add_widget(self, layer, attribute_name, attribute_type=QVariant.String, widget_type="ValueRelation", config={}):
         """Adds a widget to an attribute if it doesn't exist already"""
-        index = self._get_feature_layer_index(layer, attribute_name)
+        index = self._get_layer_field_index(layer, attribute_name)
         if index == -1: # attribute doesn't exist
             attribute_index = self._add_attribute(layer, attribute_name, attribute_type) # add attribute
-            self._add_widget_attribute(layer, widget_type, config, attribute_index) # add widget to attribute
+            self._add_widget_attribute(layer, widget_type, attribute_name=None, attribute_index=attribute_index, config=config) # add widget to attribute
             return attribute_index
         return index
     
-    def _add_widget_attribute(self, layer, widget_type, config, attribute_index):
-        widget = QgsEditorWidgetSetup(widget_type, config) # create widget with attribute
-        layer.setEditorWidgetSetup(attribute_index, widget)
+    def _add_widget_attribute(self, layer, widget_type, attribute_name=None, attribute_index=-1, config={}):
+        if attribute_name:
+            attribute_index = self._get_layer_field_index(layer, attribute_name)
+        if attribute_index != -1:
+            widget = QgsEditorWidgetSetup(widget_type, config) # create widget with attribute
+            layer.setEditorWidgetSetup(attribute_index, widget)
 
     def _hide_attribute(self, layer, attribute_name=None, attribute_index=-1, config={}):
         """Hides an attribute from a layer"""
-        if attribute_name:
-            attribute_index = self._get_feature_layer_index(layer, attribute_name)
-        if attribute_index != -1:
-            self._add_widget_attribute(layer, "Hidden", config, attribute_index)
+        self._add_widget_attribute(layer, "Hidden", attribute_name, attribute_index, config)
     
     def _get_feature_attribute(self, feature, attribute_name, default_value=None):
         """Gets an attribute from a feature if it has a value, else returns None"""
@@ -374,13 +374,13 @@ class AzureMapsPlugin:
     
     def _is_field_exist_layer(self, layer, field_name):
         """Checks if a field exists in a layer"""
-        fieldIndex = self._get_feature_layer_index(layer, field_name)
+        fieldIndex = self._get_layer_field_index(layer, field_name)
         return fieldIndex != -1
     
     def _get_feature_field_index(self, feature, field_name):
         return feature.fieldNameIndex(field_name)
     
-    def _get_feature_layer_index(self, layer, field_name):
+    def _get_layer_field_index(self, layer, field_name):
         return layer.fields().indexFromName(field_name)
     
     def _get_feature_field_index_value(self, feature, field_name, default_value=None):
@@ -389,15 +389,23 @@ class AzureMapsPlugin:
             return fieldIndex, self._get_feature_attribute(feature, field_name, default_value)
         return fieldIndex, default_value
         
-    def _get_attribute_table_config(self, layer, ontologyClass):
+    def _get_attribute_table_config(self, layer, ontologyClass, additional_hidden_attributes=[]):
         """Returns a QgsAttributeTableConfig object with the desired settings"""
         table_config = layer.attributeTableConfig()
         table_config.setActionWidgetStyle(QgsAttributeTableConfig.ActionWidgetStyle.DropDown)
-        for hidden_attribute in ontologyClass.BASE_ATTR.hiddenProperties:
-            attribute_index = self._get_feature_layer_index(layer, hidden_attribute)
+        for hidden_attribute in ontologyClass.BASE_ATTR.hiddenProperties + additional_hidden_attributes:
+            attribute_index = self._get_layer_field_index(layer, hidden_attribute)
             if attribute_index != -1:
                 table_config.setColumnHidden(attribute_index, True)
         return table_config
+    
+    def _get_editor_form_config(self, layer, ontologyClass, readOnlyAttributes=[]):
+        form_config = layer.editFormConfig()
+        for attribute_name in readOnlyAttributes:
+            attribute_index = self._get_layer_field_index(layer, attribute_name)
+            if attribute_index != -1:
+                form_config.setReadOnly(attribute_index, True)
+        return form_config
 
     def _set_layer_labeling(self, layer, geometryType):
         """Sets the labeling for a layer, based on geometryType"""
@@ -441,6 +449,13 @@ class AzureMapsPlugin:
 
     def list_datasets_changed(self, text):
         self.dlg.datasetId.setEditText(text.split('\n')[0].strip())
+
+    def _floor_default_value(self):
+        index = self.level_picker.get_index()
+        if index != -1:
+            ordinal = str(self.level_picker.get_ordinal(index))
+            return ordinal
+        return None
 
     def get_features_clicked(self):
         # Condition: Only one dataset is allowed at a time
@@ -524,7 +539,7 @@ class AzureMapsPlugin:
             globals()['data_task_'+collectionName] = QgsTask.fromFunction(
                 "Getting " + collectionName + " collection",
                 self.requestHandler.get_request_parallel,
-                collectionName, "data", data_link["href"], 5000
+                collectionName, "data", data_link["href"], Constants.HTTPS.GET_LIMIT
             )
             QgsApplication.taskManager().addTask(globals()['data_task_'+collectionName]) # Add task to global queue
             taskList.append(globals()['data_task_'+collectionName]) # Add task to local list
@@ -533,7 +548,7 @@ class AzureMapsPlugin:
             globals()['definition_task_'+collectionName] = QgsTask.fromFunction(
                 "Getting " + collectionName + " collection definition",
                 self.requestHandler.get_request_parallel,
-                collectionName, "definition", meta_link["href"], 5000
+                collectionName, "definition", meta_link["href"], Constants.HTTPS.GET_LIMIT
             )
             QgsApplication.taskManager().addTask(globals()['definition_task_'+collectionName])
             taskList.append(globals()['definition_task_'+collectionName])
@@ -650,26 +665,16 @@ QGIS doesn't support this type and hence these features won't be rendered. Pleas
             )
             self.logger.QLogWarn("""Geometry Collection found in layers. 
 QGIS doesn't support this type and hence these features won't be rendered. The features are affected: {}""".format(', '.join(geometryCollectionStringList)))
-        
-        # Facility and Level layer are mandatory
-        error_text = "Unable to load {} featureClass. Please try again."
-        for layer_name_check in ["facility", "level"]:
-            if layer_name_check not in _collectionName_layerName_list_map:
-                return self.dialogBox.QMessageCrit(
-                    title="Dataset error",
-                    text=error_text.format(layer_name_check),
-                    detailedText=error_text.format(layer_name_check)
-                )
             
         _levelId_ordinal_map, _ordinal_levelId_map = {}, {}
         _unitId_ordinal_map = {}
-        
-
         loading_order = []
         for cName in Constants.Ontology.get_loading_order(self.ontology, collections):
             loading_order.extend(sorted(_collectionName_layerName_list_map[cName]))
 
         for order_ind, layerName in enumerate(loading_order):
+            additional_hidden_attributes = [] # Attributes that are hidden, such as referential Integrity attributes etc.
+            readOnly_attributes = ["id"] # All layers have id attribute which is read only
             collectionName = _layerName_collectionName_map[layerName]
             layer = _layerName_layer_map[layerName]
             geometryType = _layerName_geometryType_map[layerName]
@@ -678,30 +683,25 @@ QGIS doesn't support this type and hence these features won't be rendered. The f
             self._set_layer_labeling(layer, geometryType)
             QApplication.processEvents()
                 
-            ontologyClass = Constants.Facility_2 if self.ontology == Constants.Ontology.FACILITY_2 \
-                                                 else Constants.CustomOntology
-            attribute_table_config = self._get_attribute_table_config(layer, ontologyClass)
-            layer.setAttributeTableConfig(attribute_table_config)
-
-            for hidden_attribute in ontologyClass.BASE_ATTR.hiddenProperties:
-                self._hide_attribute(layer, hidden_attribute)
+            if self.ontology == Constants.Ontology.FACILITY_2:
+                ontologyClass = Constants.Facility_2 
+            elif self.ontology == Constants.Ontology.CUSTOM:
+                ontologyClass = Constants.CustomOntology
+            else:
+                raise Exception("Ontology not supported")
 
             referential_integrity_map = _collectionName_referential_integrity_map[collectionName]
+            # Handling levelId integretiy for custom ontology 
+            if self.ontology == Constants.Ontology.CUSTOM and \
+                Constants.CustomOntology.COLLECTIONS.LVL in self.collectionName_layerName_list_map and \
+                    self._get_layer_field_index(layer, "levelId") != -1: # levels exist
+                referential_integrity_map["level"] = "levelId"
+
             required_properties_list = _collectionName_required_properties_list_map[collectionName]
             geometryType = _layerName_geometryType_map[layerName]
-
-            """
-            Add floor attribute - seperate attribute needed since only level featureClass has ordinals (floor numbers)
-            Most have levelId (and unitId, in case of Facility2.0 Ontology), which can be used to extract ordinals
-            This helps to store ordinals in all featureClasses
-            """
-            # If the layer has no geometry, or if it is a facility layer - we don't need to add floors
-            if geometryType == Constants.GEOMETRY_TYPE.NOGEOMETRY or collectionName == "facility": 
-                floor_index = -1
-            else:
-                floor_index = self._add_attribute(layer=layer, attribute_name="floor", attribute_type=QVariant.String, hidden=True)
             
             # Add a widget for each referential integrety field
+            # And add those fields to the hidden attributes list
             ref_field_id_widget_index_map = {}
             for ref_field_name, ref_field_id in referential_integrity_map.items():
                 widget_index = -1
@@ -709,7 +709,9 @@ QGIS doesn't support this type and hence these features won't be rendered. The f
                     widget_index = self._add_widget(layer=layer, attribute_name=ref_field_name, attribute_type=QVariant.String,
                                                 widget_type="ValueRelation", config=_layerName_config_map[layerName])
                 ref_field_id_widget_index_map[ref_field_id] = widget_index
+                additional_hidden_attributes.append(ref_field_id)
                 
+            floor_index = None
             # Loop through all features and apply necessary changes (add floor attribute, add referential integrity widgets)
             for feature in layer.getFeatures():
                 featureId = self._get_feature_attribute(feature, "id")
@@ -728,41 +730,89 @@ QGIS doesn't support this type and hence these features won't be rendered. The f
                         ordinal = _levelId_ordinal_map[levelId]
                     elif unitId != None and unitId in _unitId_ordinal_map and self.ontology == Constants.Ontology.FACILITY_2: # In case of areaElement, lineElement, pointElement
                         ordinal = _unitId_ordinal_map[unitId]
-                    else:
-                        # Features without levelId, added to all levels
+                    elif len(_levelId_ordinal_map) > 0:
+                        # If levelId or unitId is not present, but levels are still present
+                        # I.e. Features without levelId, added to all levels
                         is_floor = False
                         self.logger.QLogInfo("Feature with id:{} is not attached to a floor".format(featureId))
-                        # raise Exception("Unable to get ordinal for feature with id:{}".format(featureId))
-
+                    else: # Else would be noontology scenario, where no levels are present - do nothing
+                        is_floor = False
+                        
                 # Handling Facility2.0 ontology scenario, add ordinal to unitId--ordinal map
                 if collectionName == "unit" and self.ontology == Constants.Ontology.FACILITY_2: 
                     _unitId_ordinal_map[featureId] = ordinal
                 if collectionName == "facility": # BUG: Not sure what this is
                     self._update_layer_group_name(layer)
 
-                # If floor attribute exists, add ordinal to floor attribute
-                if floor_index != -1 and is_floor:
-                    layer.changeAttributeValue(feature.id(), floor_index, ordinal)
+                # If floor attribute exists, create floor attribute if it doesn't exists and add ordinal to floor attribute
+                if is_floor:
+                    if floor_index == None: # Only happens once per layer
+                        """
+                        Add floor attribute - seperate attribute needed since only level featureClass has ordinals (floor numbers)
+                        Most have levelId (and unitId, in case of Facility2.0 Ontology), which can be used to extract ordinals
+                        This helps to store ordinals in all featureClasses
+                        """
+                        # If the layer has no geometry, or if it is a facility layer - we don't need to add floors
+                        if geometryType == Constants.GEOMETRY_TYPE.NOGEOMETRY or collectionName == "facility": 
+                            floor_index = -1
+                        else:
+                            floor_index = self._add_attribute(layer=layer, attribute_name="floor", attribute_type=QVariant.String, hidden=False)
+                            # layer.setDefaultValueDefinition(floor_index, QgsDefaultValue("'--Current Floor--'"))
+
+                    if floor_index != -1:
+                        layer.changeAttributeValue(feature.id(), floor_index, ordinal)
 
                 # Add referential integrity values to referential integrity fields
                 # For Facility2.0, category and directory Info layers would not have any referential integrity fields
                 for ref_field_id, widget_index in ref_field_id_widget_index_map.items():
                     layer.changeAttributeValue(feature.id(), widget_index, self._get_feature_attribute(feature, ref_field_id))
+            
+            if floor_index != -1: # If floor attribute exists, it is readOnly and levelId is hidden
+                if self._get_layer_field_index(layer, "floor") != -1:
+                    additional_hidden_attributes.append("floor")
+                if self._get_layer_field_index(layer, "level") != -1:
+                    readOnly_attributes.append("level")
+                if self._get_layer_field_index(layer, "levelId") != -1 and "levelId" not in additional_hidden_attributes:
+                    additional_hidden_attributes.append("levelId")
+
+            """Hide Attributes"""
+            # In case of Custom Ontology, if level collectionName is present (i.e. levels are to be rendered)
+            # Hide ordinal/levelOrdinal fields, since we have the floor field
+            if self.ontology == Constants.Ontology.CUSTOM and Constants.CustomOntology.COLLECTIONS.LVL in self.collectionName_layerName_list_map:
+                if self._get_layer_field_index(layer, "ordinal") != -1:
+                    additional_hidden_attributes.append("ordinal")
+
+            # Set attribute table config for layer and hide the hidden attributes + additional hidden attributes
+            attribute_table_config = self._get_attribute_table_config(layer, ontologyClass, additional_hidden_attributes)
+            layer.setAttributeTableConfig(attribute_table_config)
+            for hidden_attribute in ontologyClass.BASE_ATTR.hiddenProperties + additional_hidden_attributes:
+                self._hide_attribute(layer, attribute_name=hidden_attribute)
+            
+            """Set ReadOnly Attributes"""
+            editor_form_config = self._get_editor_form_config(layer, ontologyClass, readOnly_attributes)
+            layer.setEditFormConfig(editor_form_config)
+
+            """Set NonNull Constraints"""
+            # Set NonNull constraints for required properties
+            for required_property in required_properties_list:
+                field_index = self._get_layer_field_index(layer, required_property)
+                layer.setFieldConstraint(field_index, QgsFieldConstraints.ConstraintNotNull)
 
             layer.commitChanges()
             self.add_layer_events(layer)
+        
+        if self.ontology == Constants.Ontology.CUSTOM:
+            for collectionName in Constants.CustomOntology.COLLECTIONS.nonEditableCollections:
+                for layerName in self.collectionName_layerName_list_map.get(collectionName, []):
+                    layer = self.layerName_layer_map[layerName]
+                    layer.setReadOnly(True)
 
         self.levelId_ordinal_map, self.ordinal_levelId_map = _levelId_ordinal_map, _ordinal_levelId_map
         self.unitId_ordinal_map = _unitId_ordinal_map
-        self.level_picker.extend(sorted(self.levelId_ordinal_map.values()))
-        """
-        if level_layer is None or unit_layer is None:
-            self.msgBar.QMessageBarCrit(
-                title="Error",
-                text="One or more required collections is missing.",
-            )
-            return
-        """
+        if len(self.levelId_ordinal_map) != 0:
+            self.level_picker.extend(sorted(self.levelId_ordinal_map.values()))
+            self.level_picker.set_base_ordinal(0)
+
         # Set canvas CRS to WGS84 Pseudo-Mercator
         canvas_crs = QgsCoordinateReferenceSystem(Constants.CRS_EPSG_3857)
         self.iface.mapCanvas().setDestinationCrs(canvas_crs)
@@ -773,7 +823,6 @@ QGIS doesn't support this type and hence these features won't be rendered. The f
         self.iface.zoomToActiveLayer()
 
         # Clean up to filter features by level and reset initial level to 0 if possible
-        self.level_picker.set_base_ordinal(0)
         self.refresh_floor_picker()
 
         progress.next("Dataset loaded successfully.")
@@ -786,7 +835,7 @@ QGIS doesn't support this type and hence these features won't be rendered. The f
         layer.beforeCommitChanges.connect(lambda: self.on_before_commit_changes(layer))
         layer.featuresDeleted.connect(lambda fids: self.on_features_deleted(fids, layer))
         layer.featureAdded.connect(lambda fid: self.on_feature_added_or_changed(fid, layer))
-        layer.attributeValueChanged.connect( lambda fid: self.on_feature_added_or_changed(fid, layer) )
+        # layer.attributeValueChanged.connect( lambda fid: self.on_feature_added_or_changed(fid, layer) )
         layer.updatedFields.connect(lambda: self.on_fields_changed(layer))
         layer.afterCommitChanges.connect(lambda: self.on_after_commit_changes(layer))
         layer.beforeRollBack.connect(lambda: self.on_before_rollBack(layer))
@@ -917,10 +966,6 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
                         required_properties_list.append(field_name)
                     fieldString.append('field={}:{}'.format(field_name, field_type))
                 fullFieldString = '&'.join(fieldString)
-
-                # Handling levelId integretiy for custom ontology 
-                if self.ontology == Constants.Ontology.CUSTOM and "levelId" in properties_map:
-                    referential_integrity_map["level"] = "levelId"
             
             # Layer name is the collection name, unless there are multiple geometry types, in which case the geometry type is appended to the name
             layer_name = "{}{}{}".format(name, Constants.LAYER_NAME_DELIMITER, geometryType) if len(feature_collection_by_geometry_type) > 1 else name
@@ -965,6 +1010,9 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
             if anchorIndex != -1:
                 result = layer.dataProvider().deleteAttributes([anchorIndex])
                 layer.updateFields()
+
+            layer.setDefaultValueDefinition(self._get_layer_field_index(layer, "id"), QgsDefaultValue("'--ID will be generated by server--'"))
+            
             layer.commitChanges() # Commit pending changes to the actual layer
 
             # Store the id of each feature in a map, so we can use it later to update the feature
@@ -1358,10 +1406,11 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
             elif ordinal: # Update floor using ordinal
                 layer.changeAttributeValue(fid, floor_index, str(ordinal))
                 # This means changes to level layer has been made, need to update floor-picker
-                # First delete the ordinal related to the ID from the floor picker
-                del_ordinal = self.levelId_ordinal_map[featureId]
-                self.level_picker.remove(del_ordinal)
-                del self.ordinal_levelId_map[del_ordinal]
+                # If it is a change, first delete the ordinal related to the ID from the floor picker
+                if featureId in self.levelId_ordinal_map:
+                    del_ordinal = self.levelId_ordinal_map[featureId]
+                    self.level_picker.remove(del_ordinal)
+                    del self.ordinal_levelId_map[del_ordinal]
                 # Update layer picker with latest floor information. Handles repeat cases and sorted updates of floor numbers
                 for innerFeature in layer.getFeatures():
                     self.level_picker.append(self._get_feature_attribute(innerFeature, "ordinal"))

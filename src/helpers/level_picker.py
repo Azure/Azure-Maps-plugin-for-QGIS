@@ -39,7 +39,7 @@ class LevelPicker:
         self.prefix = prefix
         self.levels = []
         self.levels_set = set()
-        self.current_index = 0
+        self.current_index = -1
 
         # Add a placeholder text to QComboBox(es)
         self._toggle_placeholder(True)

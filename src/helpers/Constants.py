@@ -2,6 +2,7 @@ from enum import Enum
 from ..models.FACILITY_2 import FACILITY_2
 from ..models.CUSTOM_ONTOLOGY import CUSTOM_ONTOLOGY
 from ..models.ONTOLOGY import ONTOLOGY
+from ..models.NOONTOLOGY import NOONTOLOGY
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -67,7 +68,8 @@ class Constants:
 
         MAX_RETRIES = 3
         RETRY_INTERVAL = 1 # 1 seconds
-        GET_LIMIT = 500
+        RETRY_STATUS_CODES = [429, 500, 502, 503, 504]
+        GET_LIMIT = 5000
 
     class API_Versions:
         V20 = "2.0"

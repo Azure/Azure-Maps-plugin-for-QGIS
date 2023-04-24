@@ -160,6 +160,7 @@ class AzureMapsPluginLogger:
 
     def responseToJSON(self, response):
         """Convert response to JSON for logging"""
+        if response == None: return {}
         body = None
         if response.request.body:
             body = json.loads(response.request.body)
@@ -188,4 +189,4 @@ class AzureMapsPluginLogger:
         Write error logs to file for all changes
         All error responses for changes are combined into one JSON file, per commit session
         """
-        self.writeErrorLog([self.responseToJSON(response) for response in responseList])
+        self.writeErrorLog([self.responseToJSON(response) for response in responseList if response != None])

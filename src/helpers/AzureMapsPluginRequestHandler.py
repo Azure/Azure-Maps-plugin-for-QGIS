@@ -153,6 +153,8 @@ class AzureMapsPluginRequestHandler:
                     "error_text": error_text,
                     "response": r
                 }
+                if r.status_code not in Constants.HTTPS.RETRY_STATUS_CODES:
+                    retry = False
             else: # Success!
                 resp = {
                     "success": True,
@@ -161,8 +163,8 @@ class AzureMapsPluginRequestHandler:
                 }
                 retry = False
             
-            # If there is an error, error_text will be populated
-            if error_text:
+            # If there is an error
+            if retry:
                 retry_counter += 1
                 time.sleep(retry_counter * Constants.HTTPS.RETRY_INTERVAL) # Wait before retrying
                 self._response_logging(url=url, request_type=request_type, resp=resp) # Log the response

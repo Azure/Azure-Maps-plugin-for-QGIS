@@ -1,11 +1,12 @@
 """
-Facility-2.0 Ontology Model
+Custom Ontology Model
 """
 
 class CUSTOM_ONTOLOGY:
     class COLLECTIONS:
         LVL = "level"
         FCL = "facility"
+        nonEditableCollections = [LVL, FCL]
 
     class BASE_ATTR:
         azureMapsIntId = "azureMapsIntId"
