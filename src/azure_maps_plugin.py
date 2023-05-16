@@ -111,7 +111,7 @@ class AzureMapsPlugin:
                             subscription_key=self.dlg.subKey.text(),
                             autoLogToFile=True,
                             logFolder=self.dlg.logsFolderPicker.filePath(), 
-                            debugLog=True)
+                            debugLog=False)
         self.requestHandler = AzureMapsPluginRequestHandler(
             subscription_key=self._get_subscription_key(),
             geography=self.dlg.geographyDropdown.currentText(),
@@ -149,7 +149,7 @@ class AzureMapsPlugin:
 
     def translate(self):
         """Get the translation for plugin name using Qt translation API."""
-        return QCoreApplication.translate("AzureMapsPlugin", Constants.AZURE_MAPS)
+        return QCoreApplication.translate("AzureMapsPlugin", Constants.AzureMapsQGISPlugin.AUTHOR)
 
     def add_action(self):
         """Add a toolbar icon to the toolbar."""
@@ -243,6 +243,14 @@ class AzureMapsPlugin:
     def refresh_floor_picker(self):
         self.floor_picker_changed(self.level_picker.get_index())
 
+    def _get_QActions(self, *args):
+        for actionName in args:
+            yield self.iface.mainWindow().findChild(QAction, actionName)
+            
+    def _reset_feature_selection(self):
+        for action in self._get_QActions('mActionDeselectAll', 'mClearResultsAction'):
+            if action: action.trigger()
+
     def floor_picker_changed(self, index):
         """
         Change the floor picker to the given index
@@ -253,6 +261,7 @@ class AzureMapsPlugin:
         if index < 0: return # Index cannot be lower than 0
         if self.current_index == index: return # No action if index is the same as current index
 
+        self._reset_feature_selection()
         ordinal = str(self.level_picker.get_ordinal(index)) # Get ordinal on index
         self.current_index = index 
         for toplevel_layer in QgsProject.instance().layerTreeRoot().children():
@@ -297,11 +306,13 @@ class AzureMapsPlugin:
     
     def reset(self, progress=None):
         # Clear QGIS layers
-        self.root.removeChildNode(self.base_group)
+        if self.base_group in self.root.children():
+            self.root.removeChildNode(self.base_group)
         # Clear internal variables
         self.base_group = None # Remove base group
         self.current_dataset_id = None # Remove current dataset ID
-        self.level_picker.clear() # Clear level picker
+        self.level_picker = LevelPicker([self.toolbar_level_picker])
+        self.current_index = None
         self.id_map = {} # Clear id map
         if progress: # Close progress bar
             progress.close()
@@ -444,18 +455,16 @@ class AzureMapsPlugin:
         if not success: return
         progress.next("Parsing Dataset Information...")
         r = resp["response"]
-        dataset_ids_descriptions = [(dataset.get("datasetId", None), dataset.get("description", "--No Description--")) for dataset in r.get("datasets",[])]
-        self.dlg.datasetId.addItems(['{}\n{}'.format(uid, d) for uid, d in dataset_ids_descriptions if uid != None])
+        dataset_ids_descriptions = [(dataset.get("datasetId", None), 
+                                     dataset.get("description", "--No Description--"), 
+                                     dataset.get('created', ''))
+                                     for dataset in r.get("datasets",[])]
+        dataset_ids_descriptions.sort(key=lambda x: x[2], reverse=True)
+        self.dlg.datasetId.clear()
+        self.dlg.datasetId.addItems(['{}\n{}'.format(uid, d) for uid, d, _ in dataset_ids_descriptions if uid != None])
 
     def list_datasets_changed(self, text):
         self.dlg.datasetId.setEditText(text.split('\n')[0].strip())
-
-    def _floor_default_value(self):
-        index = self.level_picker.get_index()
-        if index != -1:
-            ordinal = str(self.level_picker.get_ordinal(index))
-            return ordinal
-        return None
 
     def get_features_clicked(self):
         # Condition: Only one dataset is allowed at a time
@@ -472,7 +481,7 @@ class AzureMapsPlugin:
             if warning_response == QMessageBox.Cancel:
                 return self._getFeaturesButton_setEnabled(True)
             if warning_response == QMessageBox.Yes:
-                self.reset()
+                pass # Keep going
             else:
                 self.msgBar.QMessageBarCrit(
                     title="Error",
@@ -480,14 +489,11 @@ class AzureMapsPlugin:
                 )
                 return self._getFeaturesButton_setEnabled(True)
 
-        self.reset()
         self.close_button_clicked()
         self._getFeaturesButton_setEnabled(False)
         self._setup_helpers()
-        self.logger.QLogInfo("{} Loading Azure Maps dataset with ID: {} {}".format('-'*15, dataset_id, '-'*15))
 
         start_time = time.time()
-        self.current_dataset_id = dataset_id
 
         # Start progress dialog
         progress = ProgressIterator(
@@ -507,14 +513,17 @@ class AzureMapsPlugin:
         r = resp["response"]
         self.ontology = r["ontology"]
 
-        # If successful, get all the layers.
+                
+        # After first call has been made, i.e. we can connect and datasetId is valid, remove existing dataset
+        self.reset()
+        self.logger.QLogInfo("{} Loading Azure Maps dataset with ID: {} {}".format('-'*15, dataset_id, '-'*15))
+        self.current_dataset_id = dataset_id
         # Create a new dataset group layer if it doesn't exist, otherwise override the existing group layer
         if self.base_group is None:
             self.base_group = self.root.insertGroup(0, dataset_id)
         else:
             self.base_group.removeAllChildren()
             self.base_group.setName(dataset_id)
-
         # Add a group layer delete event listener
         self.root.removedChildren.connect(self._on_layer_removed)
 
@@ -539,7 +548,7 @@ class AzureMapsPlugin:
             globals()['data_task_'+collectionName] = QgsTask.fromFunction(
                 "Getting " + collectionName + " collection",
                 self.requestHandler.get_request_parallel,
-                collectionName, "data", data_link["href"], Constants.HTTPS.GET_LIMIT
+                collectionName, "data", data_link["href"]
             )
             QgsApplication.taskManager().addTask(globals()['data_task_'+collectionName]) # Add task to global queue
             taskList.append(globals()['data_task_'+collectionName]) # Add task to local list
@@ -548,7 +557,7 @@ class AzureMapsPlugin:
             globals()['definition_task_'+collectionName] = QgsTask.fromFunction(
                 "Getting " + collectionName + " collection definition",
                 self.requestHandler.get_request_parallel,
-                collectionName, "definition", meta_link["href"], Constants.HTTPS.GET_LIMIT
+                collectionName, "definition", meta_link["href"]
             )
             QgsApplication.taskManager().addTask(globals()['definition_task_'+collectionName])
             taskList.append(globals()['definition_task_'+collectionName])
@@ -777,7 +786,7 @@ QGIS doesn't support this type and hence these features won't be rendered. The f
 
             """Hide Attributes"""
             # In case of Custom Ontology, if level collectionName is present (i.e. levels are to be rendered)
-            # Hide ordinal/levelOrdinal fields, since we have the floor field
+            # Hide ordinal fields, since we have the floor field
             if self.ontology == Constants.Ontology.CUSTOM and Constants.CustomOntology.COLLECTIONS.LVL in self.collectionName_layerName_list_map:
                 if self._get_layer_field_index(layer, "ordinal") != -1:
                     additional_hidden_attributes.append("ordinal")
@@ -1071,8 +1080,8 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
                     title = "Deleting Features in {} layer".format(layer.name()),
                     text = "Are you sure to delete these features?",
                     buttons = QMessageBox.Yes | QMessageBox.Cancel,
-                    detailedText="""Please make sure other layers are not referencing these features before deleting them.\n
-                        Otherwise, the delete operation will fail and you cannot access those features before loading data again."""
+                    detailedText="""Please make sure other layers are not referencing these features before deleting them.
+Otherwise, the delete operation will fail."""
                 )
                 if warning_response == QMessageBox.Cancel:
                     # Stop a current editing operation and discards any uncommitted edits
@@ -1270,7 +1279,7 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
         for fid, feature, body_str in addCommit:
             commit_url = Constants.API_Paths.CREATE.format(base=self.features_url, collectionId=collectionName)
             resp = self.requestHandler.post_request(url=commit_url, body=body_str)
-            progress.next("Creating new features...")
+            progress.next("Saving: Creating new features...")
             if resp["success"]: 
                 featureId = resp['response'].json()['id']
                 feature.setAttribute('id', featureId)
@@ -1282,7 +1291,7 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
         for fid, featureId, feature, oldFeature, body_str in editCommit:
             commit_url = Constants.API_Paths.PUT.format(base=self.features_url, collectionId=collectionName, featureId=featureId)
             resp = self.requestHandler.put_request(url=commit_url, body=body_str)
-            progress.next("Editing features...")
+            progress.next("Saving: Editing features...")
             if resp["success"]:
                 for newFeatureChange, idx in self._compare_feature_changes(feature, oldFeature).values(): # Make the commit
                     layer.changeAttributeValue(fid, idx, newFeatureChange)
@@ -1295,7 +1304,7 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
         for fid, featureId, oldFeature in deleteCommit:
             commit_url = Constants.API_Paths.DELETE.format(base=self.features_url, collectionId=collectionName, featureId=featureId)
             resp = self.requestHandler.delete_request(url=commit_url)
-            progress.next("Deleting features...")
+            progress.next("Saving: Deleting features...")
             if resp["success"]:
                 self.internalDelete = True # Mark delete as internal, to skip function
                 layer.deleteFeature(fid)
@@ -1345,7 +1354,7 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
         else:
             self.dialogBox.QMessageInfo(
                 title="Save Successful!",
-                text="Your saves to {} layer has been successful!".format(layer.name())
+                text="Changes in {} layer saved successfully!".format(layer.name())
             )
             self._handle_error_msgBar(layer.name(), is_fail=False)
         return

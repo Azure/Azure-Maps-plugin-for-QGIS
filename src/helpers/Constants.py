@@ -2,7 +2,6 @@ from enum import Enum
 from ..models.FACILITY_2 import FACILITY_2
 from ..models.CUSTOM_ONTOLOGY import CUSTOM_ONTOLOGY
 from ..models.ONTOLOGY import ONTOLOGY
-from ..models.NOONTOLOGY import NOONTOLOGY
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -13,6 +12,14 @@ class Constants:
     class Ontology(ONTOLOGY): pass
     class CustomOntology(CUSTOM_ONTOLOGY): pass
     class Facility_2(FACILITY_2): pass
+
+    class AzureMapsQGISPlugin:
+        NAME = "QGISPlugin"
+        DESCRIPTION = "Azure Maps QGIS Plugin"
+        VERSION = "2.0.0"
+        AUTHOR = "Azure Maps"
+        AUTHOR_EMAIL = ""
+        USER_AGENT = "{}/{}".format(NAME, VERSION)
     
     class Paths:
         RELATIVE_PLUGIN_PATH = "python/plugins/QGISPlugin"
@@ -78,8 +85,6 @@ class Constants:
     WFS  = "wfs"
     FEATURES = "features"
     DATASETS = "datasets"
-    AZURE_MAPS = "Azure Maps"
-    AZURE_MAPS_PLUGIN_NAME = "QGISPlugin" # TODO: FINALIZE
 
     CRS_EPSG_3857 = "EPSG:3857" # Web Mercator
     CRS_EPSG_4326 = "EPSG:4326" # Mercator

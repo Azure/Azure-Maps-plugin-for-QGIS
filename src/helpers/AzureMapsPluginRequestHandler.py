@@ -4,6 +4,7 @@ import requests
 import time
 from urllib.parse import parse_qs, urlparse, urlencode, urlunparse
 
+from qgis.core import *
 from .Constants import Constants
 
 class AzureMapsPluginRequestHandler:
@@ -96,6 +97,7 @@ class AzureMapsPluginRequestHandler:
         
         url_parts = urlparse(url) # Parse the url
         qs = dict(parse_qs(url_parts.query)) # Parse the query string
+        if "limit" in qs: del qs["limit"] # Remove the limit query parameter, if it's defined in query_params, it will be added back in
         qs.update(query_params) # Update the query string with the new query parameters. If the query parameter already exists, it will be overwritten
         url_parts = url_parts._replace(query=urlencode(qs, doseq=True)) # Replace the query string with the new query string
 
@@ -119,7 +121,11 @@ class AzureMapsPluginRequestHandler:
         elif(request_type == Constants.HTTPS.Methods.DELETE): method = requests.delete
         elif(request_type == Constants.HTTPS.Methods.PATCH): method = requests.patch
         else : raise Exception("Invalid request type")
+
         headers = {"content-type": content_type} if content_type else {} # Set the headers
+        headers['User-Agent'] = Constants.AzureMapsQGISPlugin.USER_AGENT # Add the user agent to the headers
+        headers['QGIS-Version'] = Qgis.QGIS_VERSION
+
         verify_ssl = False if self.geography == Constants.Geography.LOCALHOST else True
 
         retry, retry_counter = True, 0
@@ -198,13 +204,13 @@ class AzureMapsPluginRequestHandler:
                 break # No next link, break
         return returnDict
     
-    def get_request_parallel(self, task, _id, request_type, url, limit, **kwargs):
+    def get_request_parallel(self, task, _id, request_type, url, **kwargs):
         """
         Makes a get request to the given url in parallel
         Task needs to be the first parameter in the function, as specified by the QGSTask class
         _id and request_type are used for logging and displaying user responses
         """
-        return self.get_request(url, limit, **kwargs) # Call the get_request function
+        return self.get_request(url, **kwargs) # Call the get_request function
 
     def post_request(self, url, body=None, content_type=None, **kwargs):
         """Makes a post request to the given url"""

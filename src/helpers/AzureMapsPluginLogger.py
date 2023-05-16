@@ -25,6 +25,7 @@ class AzureMapsPluginLogger:
         self.logFolder = logFolder # Folder to save log files
         self.errorLogFolderName = Constants.Logs.ERROR_LOG_FOLDER_NAME # Folder to save error log files
         self.debugLog = debugLog # Boolean to enable debug log
+        self.errorLogFolderStatus = True # Boolean to print error log folder status
         self.setupLogFile()
     
     def set_parameters(self, subscription_key=None, dataset_id=None, logFolder=None):
@@ -64,6 +65,22 @@ class AzureMapsPluginLogger:
     def setDatasetId(self, dataset_id):
         """Set dataset id"""
         self.dataset_id = dataset_id
+
+    def _check_folder_path(self, folder_path=None):
+        """Check if folder path exists"""
+        if not folder_path:
+            folder_path = self.logFolder
+        # If folder path exists, or folderName is LOG_FOLDER_NAME and parent folder exists
+        if os.path.isdir(folder_path) or \
+        (os.path.basename(self.logFolder) == Constants.Logs.LOG_FOLDER_NAME and os.path.isdir(os.path.dirname(folder_path))):
+            self.errorLogFolderStatus = True # Set error log folder status to True, so error log folder message can be printed
+            return True
+        else:
+            if self.errorLogFolderStatus: # If error log folder status is True, i.e. message hasn't been printed before
+                self.QLogInfo(status="Failure", status_text="Error log folder not found: {}".format(folder_path))
+                self.errorLogFolderStatus = False
+            return False
+        
     
     def setLogFolder(self, logFolder):
         """
@@ -71,9 +88,9 @@ class AzureMapsPluginLogger:
         Set log file path variable
         Set error log folder path and create folder if it doesn't exist
         """
+        self.errorLogFolderStatus = True # Set error log folder status to True, so error log folder message can be printed
         self.logFolder = logFolder
-        if self.logFolder:
-            self.logFolderName = os.path.basename(self.logFolder)
+        if self.logFolder and self._check_folder_path():
             if not os.path.exists(self.logFolder):
                 os.mkdir(self.logFolder)
             self.logFilePath = "{}/{}".format(self.logFolder, self.logFileName)
@@ -90,7 +107,7 @@ class AzureMapsPluginLogger:
         return log_text
 
     def _print_frame_info(self, frame_info):
-        filename = frame_info.filename.split(Constants.AZURE_MAPS_PLUGIN_NAME)[1]
+        filename = frame_info.filename.split(Constants.AzureMapsQGISPlugin.NAME)[1]
         spacing = ' '*(st + sb + sl + sb + ss + sb)
         return "\n{}[{}:{}:{}]\t[code_context:{}]".format(spacing, filename, frame_info.function, frame_info.lineno, frame_info.code_context)
     
@@ -179,10 +196,11 @@ class AzureMapsPluginLogger:
         if not errorLogFilePath: 
             self.errorLogFileName = self._generateErrorLogFileName()
             self.errorLogFilePath = "{}/{}".format(self.errorLogFolderPath, self.errorLogFileName)
-        with open(self.errorLogFilePath, "w") as f:
-            json.dump(json_response, f, indent=2)
-        # Log error log file path
-        self.QLogInfo(status="Failure", status_text="Error log written to {}".format(self.errorLogFilePath))
+        if self._check_folder_path(): # If error log folder exists
+            with open(self.errorLogFilePath, "w") as f:
+                json.dump(json_response, f, indent=2)
+            # Log error log file path
+            self.QLogInfo(status="Failure", status_text="Error log written to {}".format(self.errorLogFilePath))
         
     def writeErrorLogChanges(self, responseList):
         """
