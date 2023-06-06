@@ -1,12 +1,13 @@
 [general]
-name=Azure Maps
+name=Azure Maps Creator
 qgisMinimumVersion=3.22
 description=Provides access to Azure Maps Creator services
-version=2.0.0
-author=Microsoft Corporation
-email=tejitpabari@microsoft.com
+version=1.0.0
+author=Azure Maps Creator
+email=am-creator-qgis@microsoft.com
 
-about=Provides read/write access to Azure Maps Creator data. Azure Maps documentation: https://aka.ms/am-qgis-plugin
+about=Provides read/write access to Azure Maps Creator data. 
+    Azure Maps documentation: https://aka.ms/am-qgis-plugin
 
 tracker=https://feedback.azure.com/forums/909172-azure-maps
 repository=https://microsoft.com
@@ -18,13 +19,11 @@ repository=https://microsoft.com
 # changelog=
 
 # Tags are comma separated with spaces allowed
-tags=python, WFS, Features, Azure, Azure Maps, private atlas, Creator, Conversion, 
+tags=indoor maps, WFS, Features, Azure, Azure Maps, private atlas, Creator
 
 homepage=https://azure.microsoft.com/en-us/services/azure-maps/
 category=Vector
 icon=media/icon-circle.png
-# experimental flag
-experimental=True
 
 # deprecated flag (applies to the whole plugin, not just a single version)
 deprecated=False

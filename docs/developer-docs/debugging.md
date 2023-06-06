@@ -8,7 +8,7 @@ Check the file [Debugger-VSCode](./debugger-vscode.md) to learn how to debug wit
 For other IDEs, please check this link [QGIS IDE Debugging](https://docs.qgis.org/3.22/en/docs/pyqgis_developer_cookbook/plugins/ide_debugging.html)
 
 ## Use Test Environment
-- Search for `atlas.microsoft.com` in the file [AzureMapsRequestHandler.py](../../src/helpers/AzureMapsRequestHandler.py). Add respective code to add test environment.
+- Search for `atlas.microsoft.com` in the file [AzureMapsRequestPluginHandler.py](../../src/helpers/AzureMapsPluginRequestHandler.py). Add respective code to add test environment.
 - Add Test enivronment option in the file [azure_maps_plugin_dialog_base](../../src/ui/azure_maps_plugin_dialog_base.ui)
     - Under `<widget class="QComboBox" name="geographyDropdown">`, add the following
 
@@ -21,7 +21,7 @@ For other IDEs, please check this link [QGIS IDE Debugging](https://docs.qgis.or
     ```
 
 ## Use Localhost
-- Search for `atlas.microsoft.com` in the file [AzureMapsRequestHandler.py](../../src/helpers/AzureMapsRequestHandler.py). Add respective code to add localhost.
+- Search for `atlas.microsoft.com` in the file [AzureMapsPluginRequestHandler.py](../../src/helpers/AzureMapsPluginRequestHandler.py). Add respective code to add localhost.
 - Add Localhost enivronment option in the file [azure_maps_plugin_dialog_base](../../src/ui/azure_maps_plugin_dialog_base.ui)
     - Under `<widget class="QComboBox" name="geographyDropdown">`, add the following
 
