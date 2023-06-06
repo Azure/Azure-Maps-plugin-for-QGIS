@@ -27,6 +27,7 @@ import webbrowser
 
 from PyQt5 import uic
 from PyQt5 import QtWidgets
+from PyQt5.QtGui import QFont
 from PyQt5.QtCore import QSettings
 from qgis.core import *
 
@@ -46,12 +47,18 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
         super(AzureMapsPluginDialog, self).__init__(parent)
         self.setupUi(self)
         self.iface = iface
+        self.setFixedSize(500, 520)
+
+        self.setStyleSheet(
+            """
+            font-size: 12px;
+            """
+        )
 
         self.getFeaturesButton.clicked.connect(self.on_get_features_clicked)
         plugin_dir = QgsApplication.qgisSettingsDirPath().replace("\\", "/")
         config_path = plugin_dir + Constants.Paths.RELATIVE_CONFIG_PATH
         self.plugin_settings = QSettings(config_path, QSettings.IniFormat)
-        self.subKey.setText(self.plugin_settings.value("subKey", ""))
 
         # Logs
         default_logs_folder = plugin_dir + Constants.Paths.RELATIVE_PLUGIN_PATH + "/{}".format(Constants.Logs.LOG_FOLDER_NAME)
@@ -61,7 +68,6 @@ class AzureMapsPluginDialog(QtWidgets.QDialog, FORM_CLASS):
     def saveSettings(self):
         # Creator
         self.plugin_settings.setValue("datasetId", self.datasetId.currentText())
-        self.plugin_settings.setValue("subKey", self.subKey.text())
         self.plugin_settings.setValue("logsFolder", self.logsFolderPicker.filePath())
 
     def on_get_features_clicked(self):

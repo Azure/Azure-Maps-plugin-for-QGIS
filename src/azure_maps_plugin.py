@@ -72,6 +72,7 @@ class AzureMapsPlugin:
         self.plugin_dir = os.path.dirname(__file__)
         # initialize locale
         locale = QSettings().value("locale/userLocale")[0:2]
+        QgsApplication.setAttribute(Qt.AA_Use96Dpi)
         locale_path = os.path.join(
             self.plugin_dir, "i18n", "AzureMapsPlugin_{}.qm".format(locale)
         )
