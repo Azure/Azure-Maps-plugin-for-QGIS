@@ -39,7 +39,7 @@ class LevelPicker:
         self.prefix = prefix
         self.levels = []
         self.levels_set = set()
-        self.current_index = 0
+        self.current_index = -1
 
         # Add a placeholder text to QComboBox(es)
         self._toggle_placeholder(True)
@@ -86,6 +86,10 @@ class LevelPicker:
         if selected_value > inserted_value:
             for qComboBox in self.qComboBoxes:
                 qComboBox.setCurrentIndex(self.current_index + 1)
+
+    def extend(self, value_list):
+        for value in value_list:
+            self.append(value)
 
     def remove(self, value):
         """Removes a value from picker_levels if exists.

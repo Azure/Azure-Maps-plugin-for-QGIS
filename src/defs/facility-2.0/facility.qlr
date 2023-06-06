@@ -2,7 +2,7 @@
 <qlr>
   <layer-tree-group checked="Qt::Checked" expanded="1" name="">
     <customproperties/>
-    <layer-tree-layer name="facility" checked="Qt::Checked" providerKey="memory" id="facility_b51cbe48_edc8_4300_af72_c0962b603602" source="memory?geometry=Polygon&amp;crs=EPSG:4326&amp;index=yes&amp;field=id:String(0,0)&amp;field=originalId:String(0,0)&amp;field=categoryId:String(0,0)&amp;field=addressId:String(0,0)&amp;field=name:String(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)&amp;field=anchorHeightAboveSeaLevel:double(0,0)&amp;field=defaultLevelVerticalExtent:double(0,0)&amp;uid={1ac3ea48-6860-42c7-8ae4-82d87a6ab974}" expanded="1">
+    <layer-tree-layer name="facility" checked="Qt::Checked" providerKey="memory" id="facility_b51cbe48_edc8_4300_af72_c0962b603602" source="memory?geometry=Polygon&amp;crs=EPSG:4326&amp;index=yes&amp;field=id:String(0,0)&amp;field=originalId:String(0,0)&amp;field=categoryId:String(0,0)&amp;field=addressId:String(0,0)&amp;field=name:String(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)&amp;field=anchorHeightAboveSeaLevel:double(0,0)&amp;field=defaultLevelVerticalExtent:double(0,0)&amp;uid={1ac3ea48-6860-42c7-8ae4-82d87a6ab974}&amp;field=occupants:stringlist(0,0)&amp;field=anchorPoint:string(0,0)" expanded="1">
       <customproperties/>
     </layer-tree-layer>
   </layer-tree-group>
@@ -15,7 +15,7 @@
         <ymax>47.63616072171353721</ymax>
       </extent>
       <id>facility_b51cbe48_edc8_4300_af72_c0962b603602</id>
-      <datasource>memory?geometry=Polygon&amp;crs=EPSG:4326&amp;index=yes&amp;field=id:String(0,0)&amp;field=originalId:String(0,0)&amp;field=categoryId:String(0,0)&amp;field=addressId:String(0,0)&amp;field=name:String(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)&amp;field=anchorHeightAboveSeaLevel:double(0,0)&amp;field=defaultLevelVerticalExtent:double(0,0)</datasource>
+      <datasource>memory?geometry=Polygon&amp;crs=EPSG:4326&amp;index=yes&amp;field=id:String(0,0)&amp;field=originalId:String(0,0)&amp;field=categoryId:String(0,0)&amp;field=addressId:String(0,0)&amp;field=name:String(0,0)&amp;field=nameAlt:String(0,0)&amp;field=nameSubtitle:String(0,0)&amp;field=anchorHeightAboveSeaLevel:double(0,0)&amp;field=defaultLevelVerticalExtent:double(0,0)&amp;field=occupants:stringlist(0,0)&amp;field=anchorPoint:string(0,0)</datasource>
       <keywordList>
         <value></value>
       </keywordList>
@@ -173,6 +173,20 @@
             </config>
           </editWidget>
         </field>
+        <field name="occupants">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
+        <field name="anchorPoint">
+          <editWidget type="TextEdit">
+            <config>
+              <Option/>
+            </config>
+          </editWidget>
+        </field>
       </fieldConfiguration>
       <aliases>
         <alias index="0" field="id" name=""/>
@@ -184,6 +198,8 @@
         <alias index="6" field="nameSubtitle" name=""/>
         <alias index="8" field="anchorHeightAboveSeaLevel" name=""/>
         <alias index="9" field="defaultLevelVerticalExtent" name=""/>
+        <alias index="10" field="occupants" name=""/>
+        <alias index="11" field="anchorPoint" name=""/>
       </aliases>
       <excludeAttributesWMS/>
       <excludeAttributesWFS/>
@@ -197,6 +213,8 @@
         <default applyOnUpdate="0" field="nameSubtitle" expression=""/>
         <default applyOnUpdate="0" field="anchorHeightAboveSeaLevel" expression=""/>
         <default applyOnUpdate="0" field="defaultLevelVerticalExtent" expression=""/>
+        <default applyOnUpdate="0" field="occupants" expression=""/>
+        <default applyOnUpdate="0" field="anchorPoint" expression=""/>
       </defaults>
       <constraints>
         <constraint constraints="0" field="id" exp_strength="0" unique_strength="0" notnull_strength="0"/>
@@ -208,6 +226,8 @@
         <constraint constraints="0" field="nameSubtitle" exp_strength="0" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" field="anchorHeightAboveSeaLevel" exp_strength="0" unique_strength="0" notnull_strength="0"/>
         <constraint constraints="0" field="defaultLevelVerticalExtent" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="occupants" exp_strength="0" unique_strength="0" notnull_strength="0"/>
+        <constraint constraints="0" field="anchorPoint" exp_strength="0" unique_strength="0" notnull_strength="0"/>
       </constraints>
       <constraintExpressions>
         <constraint field="id" desc="" exp=""/>
@@ -219,6 +239,8 @@
         <constraint field="nameSubtitle" desc="" exp=""/>
         <constraint field="anchorHeightAboveSeaLevel" desc="" exp=""/>
         <constraint field="defaultLevelVerticalExtent" desc="" exp=""/>
+        <constraint field="occupants" desc="" exp=""/>
+        <constraint field="anchorPoint" desc="" exp=""/>
       </constraintExpressions>
       <expressionfields/>
       <attributeactions>
@@ -246,6 +268,8 @@
         <field name="nameSubtitle" editable="1"/>
         <field name="nameAlt" editable="1"/>
         <field name="addressId" editable="1"/>
+        <field name="occupants" editable="1"/>
+        <field name="anchorPoint" editable="1"/>
       </editable>
       <labelOnTop/>
       <widgets/>

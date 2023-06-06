@@ -29,12 +29,6 @@
 
 5. Restart QGIS or execute Plugin Reloader to reload the updated plugin.
 
-### References
-
-- [QGIS Plugin Home Page](https://plugins.qgis.org/)
-- [Structuring QGIS Python Plugins](https://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/plugins/plugins.html#structuring-python-plugins)
-- [Building a Python Plugin (QGIS3)](https://www.qgistutorials.com/en/docs/3/building_a_python_plugin.html#building-a-python-plugin-qgis3)
-
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
