@@ -257,8 +257,6 @@ class AzureMapsPlugin:
         Change the floor picker to the given index
         :param index: The index of the floor to change to. Indexing should start from 0
         """
-        # TODO: Add comments
-        # BUG: Improve this
         if index < 0: return # Index cannot be lower than 0
         if self.current_index == index: return # No action if index is the same as current index
 
@@ -751,7 +749,7 @@ QGIS doesn't support this type and hence these features won't be rendered. The f
                 # Handling Facility2.0 ontology scenario, add ordinal to unitId--ordinal map
                 if collectionName == "unit" and self.ontology == Constants.Ontology.FACILITY_2: 
                     _unitId_ordinal_map[featureId] = ordinal
-                if collectionName == "facility": # BUG: Not sure what this is
+                if collectionName == "facility":
                     self._update_layer_group_name(layer)
 
                 # If floor attribute exists, create floor attribute if it doesn't exists and add ordinal to floor attribute
@@ -952,7 +950,7 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
                 """
                 field_order = [field.name() for field in temp_layer.fields()] # Get field order from temp_layer
                 if len(field_order)> 0:
-                    if "id" != field_order[0]: # BUG: IMPROVE this 
+                    if "id" != field_order[0]:
                         self.logger.QLogDebug("Unable to load dataset. ID field not found in first position.", inspect_frame=inspect.currentframe())
                         raise Exception("Unable to load dataset.")
                     field_order.remove("id")
@@ -1014,8 +1012,7 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
             # Add the data from the temp layer to the actual layer
             success = layer.addFeatures(temp_layer.getFeatures())
 
-            # Delete the anchorPoint field, if it exists
-            # BUG: RESOLVE this
+            # BUG: Delete the anchorPoint field, if it exists
             anchorIndex = layer.dataProvider().fieldNameIndex("anchorPoint")
             if anchorIndex != -1:
                 result = layer.dataProvider().deleteAttributes([anchorIndex])
@@ -1059,7 +1056,6 @@ Logs can be found at {}""".format(self.logger.errorLogFolderPath))
 
     def on_feature_added_or_changed(self, fid, layer):
         # BUG: Handle feature validation based on required fields
-        # Not a P1 because field validity is handled by the API as well
         self.areFieldsValid[fid] = True # Set the flag to true, make it false if any of the checks fail
 
     def on_features_deleted(self, feature_ids, layer):
