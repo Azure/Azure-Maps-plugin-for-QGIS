@@ -50,7 +50,7 @@ SOURCES = \
 	__init__.py \
 	azure_maps_plugin.py azure_maps_plugin_dialog.py
 
-PLUGINNAME = QGISPlugin
+PLUGINNAME = AzureMapsCreator
 
 PY_FILES = \
 	__init__.py \
@@ -67,7 +67,7 @@ EXTRA_DIRS = geojson models defs helpers
 
 COMPILED_RESOURCE_FILES = resources.py
 
-PEP8EXCLUDE=pydev,resources.py,conf.py,third_party,ui
+PEP8EXCLUDE=pydev,resources.py,conf.py,third_party,ui,__pycache__,.git
 
 #################################################
 # Normally you would not need to edit below here
