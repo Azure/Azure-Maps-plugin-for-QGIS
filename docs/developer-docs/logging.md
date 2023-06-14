@@ -1,4 +1,4 @@
-# Logging in Azure Maps QGIS Plugin
+# Logging in Azure Maps Creator QGIS Plugin
 
 ## View logs in QGIS
 - Bottom right corner of QGIS has a message icon, which opens up the logs for plugin. Brief explainations of the windows is given here: 

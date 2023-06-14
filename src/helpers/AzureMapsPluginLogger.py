@@ -20,7 +20,7 @@ class AzureMapsPluginLogger:
         self.iface = iface
         self.hideSubscriptionKey = hideSubscriptionKey # Hide subscription key in logs
         self.subscription_key = subscription_key # Azure Maps Subscription Key
-        self.dataset_id = dataset_id # Azure Maps Dataset ID
+        self.dataset_id = dataset_id # Azure Maps Creator Dataset ID
         self.autoLogToFile = autoLogToFile # Boolean to enable automatically log to file
         self.logFolder = logFolder # Folder to save log files
         self.errorLogFolderName = Constants.Logs.ERROR_LOG_FOLDER_NAME # Folder to save error log files

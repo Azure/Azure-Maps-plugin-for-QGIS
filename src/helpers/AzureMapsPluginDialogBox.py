@@ -22,12 +22,19 @@ class AzureMapsPluginDialogBox:
         windowTitle=None,
         execute=True,
         width=None,
-        height=None
+        height=None,
+        isPixMapIcon=False
     ):
         """Custom QGIS Message Dialog Box"""
         
         # Standard Configuration
-        msg = QMessageBox(icon, title, text)
+        msg = QMessageBox()
+        if isPixMapIcon:
+            msg.setIconPixmap(icon)
+        else:
+            msg.setIcon(icon)
+        msg.setWindowTitle(title)
+        msg.setText(text)
         msg.setTextFormat(Qt.RichText)
         msg.setStandardButtons(buttons)
         msg.setDetailedText(detailedText)

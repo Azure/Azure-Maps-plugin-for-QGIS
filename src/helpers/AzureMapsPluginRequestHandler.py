@@ -9,7 +9,7 @@ from .Constants import Constants
 
 class AzureMapsPluginRequestHandler:
     """
-    Handles the requests to Azure Maps
+    Handles the requests to Azure Maps Creator API
     Outputs formatted response
     Handles single and batch get requests
     Includes logging requests and responses
