@@ -7,10 +7,10 @@ author=Azure Maps Creator
 email=am-creator-qgis@microsoft.com
 
 about=Provides read/write access to Azure Maps Creator data. 
-    Azure Maps documentation: https://aka.ms/am-qgis-plugin
+    Azure Maps Creator QGIS Plugin documentation: https://aka.ms/am-qgis-plugin
 
 tracker=https://feedback.azure.com/forums/909172-azure-maps
-repository=https://microsoft.com
+repository=https://github.com/Azure/Azure-Maps-plugin-for-QGIS
 # End of mandatory metadata
 
 # Recommended items:
@@ -19,7 +19,7 @@ repository=https://microsoft.com
 # changelog=
 
 # Tags are comma separated with spaces allowed
-tags=indoor maps, WFS, Features, Azure, Azure Maps, private atlas, Creator
+tags=indoor maps, WFS, Features, Azure, Azure Maps, private atlas, Creator, Azure Maps Creator
 
 homepage=https://azure.microsoft.com/en-us/services/azure-maps/
 category=Vector

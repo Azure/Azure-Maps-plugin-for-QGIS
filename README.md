@@ -1,4 +1,4 @@
-# Azure Maps QGIS Plugin
+# Azure Maps Creator QGIS Plugin
 
 ## Development
 

@@ -7,6 +7,8 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
 from qgis.core import *
+
+PLUGIN_NAME = "AzureMapsCreator"
 class Constants:
 
     class Ontology(ONTOLOGY): pass
@@ -14,15 +16,15 @@ class Constants:
     class Facility_2(FACILITY_2): pass
 
     class AzureMapsQGISPlugin:
-        NAME = "QGISPlugin"
-        DESCRIPTION = "Azure Maps QGIS Plugin"
+        NAME = PLUGIN_NAME
+        DESCRIPTION = "Azure Maps Creator QGIS Plugin"
         VERSION = "2.0.0"
         AUTHOR = "Azure Maps"
         AUTHOR_EMAIL = ""
         USER_AGENT = "{}/{}".format(NAME, VERSION)
     
     class Paths:
-        RELATIVE_PLUGIN_PATH = "python/plugins/QGISPlugin"
+        RELATIVE_PLUGIN_PATH = "python/plugins/" + PLUGIN_NAME
         RELATIVE_CONFIG_PATH = "{}/plugin-config.ini".format(RELATIVE_PLUGIN_PATH)
         PLUGIN_CIRCLE_ICON = ":/plugins/azure_maps/media/icon-circle.png"
 

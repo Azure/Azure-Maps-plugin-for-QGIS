@@ -1,7 +1,7 @@
 #/***************************************************************************
 # AzureMapsPlugin
 #
-# Azure Maps plugin for QGIS 3
+# Azure Maps Creator plugin for QGIS
 #							 -------------------
 #		begin				: 2019-06-04
 #		git sha				: $Format:%H$
@@ -59,11 +59,15 @@ PY_FILES = \
 
 UI_FILES = azure_maps_plugin_dialog_base.ui azure_maps_plugin_floor_picker.ui azure_maps_plugin_welcome_message.ui
 
-EXTRAS = metadata.txt plugin-config.ini
+EXTRAS = metadata.txt plugin-config.ini 
+
+EXTRAS_NON_SRC = CHANGELOG.md LICENSE README.md CODE_OF_CONDUCT.md CONTRIBUTING.md SECURITY.md SUPPORT.md
 
 MEDIA = media
 
 EXTRA_DIRS = geojson models defs helpers
+
+EXTRA_DIRS_NON_SRC = docs
 
 COMPILED_RESOURCE_FILES = resources.py
 
@@ -96,6 +100,8 @@ win-deploy: win-compile win-doc
 	FOR %%f in ($(MEDIA)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\$(MEDIA) /y /i
 	FOR %%f in ($(EXTRAS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
 	FOR %%f in ($(EXTRA_DIRS)) DO xcopy .\src\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\%%f /y /i /E
+	FOR %%f in ($(EXTRAS_NON_SRC)) DO xcopy .\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME) /y /i
+	FOR %%f in ($(EXTRA_DIRS_NON_SRC)) DO xcopy .\%%f $(HOME)\$(QGISDIR)\$(PLUGINNAME)\%%f /y /i /E
 
 win-delete:
 	@echo "-------------------------"
