@@ -2,7 +2,7 @@
 name=Azure Maps Creator
 qgisMinimumVersion=3.22
 description=Provides access to Azure Maps Creator services
-version=1.0.1
+version=1.0.0
 author=Azure Maps Creator
 email=am-creator-qgis@microsoft.com
 

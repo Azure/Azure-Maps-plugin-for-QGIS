@@ -125,8 +125,6 @@ class AzureMapsPluginRequestHandler:
         headers = {"content-type": content_type} if content_type else {} # Set the headers
         headers['User-Agent'] = Constants.AzureMapsQGISPlugin.USER_AGENT # Add the user agent to the headers
         headers['QGIS-Version'] = Qgis.QGIS_VERSION
-        for key,value in headers.items():
-            headers[key] = value.encode('latin-1','ignore').decode('latin-1') # Encode the headers
 
         verify_ssl = False if self.geography == Constants.Geography.LOCALHOST else True
 
