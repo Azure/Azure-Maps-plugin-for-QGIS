@@ -5,9 +5,9 @@
 ### Prerequisites
 
 - [QGIS v3.8 or greater](https://www.qgis.org/en/site/forusers/download.html)(Long term release recommended)
-    1. Install [Plugin Reloader](https://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/plugins/plugins.html#tips-and-tricks) plugin for hot reloading
-- [QT Creator](https://www.qt.io/offline-installers) for UI design
-- [Python 3](https://www.python.org/downloads/windows/)
+    1. Install [Plugin Reloader](https://docs.qgis.org/testing/en/docs/pyqgis_developer_cookbook/plugins/plugins.html#tips-and-tricks) plugin for hot reloading.
+- [QT Creator](https://www.qt.io/offline-installers) for UI design.
+- [Python 3](https://www.python.org/downloads/windows/).
 
 ### Build: Windows
 
