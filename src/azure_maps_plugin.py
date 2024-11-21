@@ -192,6 +192,8 @@ class AzureMapsPlugin:
             plugin_settings.setValue("freshinstall", "false")
             self._open_welcome_message()
 
+        self._open_deprecation_message()
+
         # Initialize Level Control
         self._configure_level_picker()
 
@@ -1502,6 +1504,19 @@ Logs can be found here: <a href='{}'>{}</a>""".format(layer.name(), self.logger.
                                 informativeText='<a href="https://aka.ms/am-qgis-plugin">Azure Maps Creator Plugin Documentation</a>',
                                 title="Azure Maps Creator",
                                 windowFlags=Qt.WindowStaysOnTopHint)
+        
+    def _open_deprecation_message(self):
+        self.dialogBox.QMessageCrit(
+            title="Azure Maps Creator Retirement",
+            text='The Azure Maps Creator indoor map service is now deprecated and will be retired on 9/30/25.<br/>For more information, see <a href="https://aka.ms/AzureMapsCreatorDeprecation">End of Life Announcement of Azure Maps Creator</a>.',
+            detailedText='The Azure Maps Creator indoor map service is now deprecated and will be retired on 9/30/25. For more information, see https://aka.ms/AzureMapsCreatorDeprecation.',
+            windowFlags=Qt.WindowStaysOnTopHint,
+            minSize=800
+        )
+        self.msgBar.QMessageBarCrit(
+            title="Azure Maps Creator Retirement",
+            text="The Azure Maps Creator indoor map service is now deprecated and will be retired on 9/30/25. For more information, see https://aka.ms/AzureMapsCreatorDeprecation.",
+        )
 
     def _getFeaturesButton_setEnabled(self, boolean):
         self.dlg.getFeaturesButton.setEnabled(boolean)
